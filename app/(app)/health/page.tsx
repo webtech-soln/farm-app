@@ -5,7 +5,6 @@ import {
   Minus,
   Package,
   Pill,
-  Plus,
   Stethoscope,
   Syringe,
   TriangleAlert,
@@ -29,17 +28,27 @@ import {
   TableFooter,
   type Column,
 } from "@/components/ui/data-table";
-import { GhostButton } from "@/components/ui/ghost-button";
+import { Pager } from "@/components/ui/pager";
 import { IconChip } from "@/components/ui/icon-chip";
 import { KpiCard } from "@/components/ui/kpi-card";
 import {
-  casesByCondition,
-  healthAlerts,
-  healthEvents,
-  healthEventsTrend,
+  getCasesByCondition,
+  getHealthAlerts,
+  getHealthEvents,
+  getHealthEventsTrend,
+  getHealthKpis,
   type HealthAlert,
-  type HealthEvent,
+  type HealthEventRow,
 } from "@/lib/data/health";
+import {
+  DeleteHealthEventDialog,
+  HealthEventDialog,
+  ResolveHealthEventDialog,
+} from "@/components/dialogs/health-dialogs";
+import { getFlockOptions } from "@/lib/data/flocks";
+import { getHouseOptions } from "@/lib/data/houses";
+import { pageWindow, paginate, param } from "@/lib/pagination";
+import { count } from "@/lib/format";
 
 const alertIcons: Record<HealthAlert["icon"], LucideIcon> = {
   alert: TriangleAlert,
@@ -47,16 +56,7 @@ const alertIcons: Record<HealthAlert["icon"], LucideIcon> = {
   vaccine: Syringe,
 };
 
-const eventSeries = [
-  {
-    name: "Resolved",
-    color: chartColors.primary,
-    values: healthEventsTrend.resolved,
-  },
-  { name: "Open", color: "#F59E0B", values: healthEventsTrend.open },
-];
-
-const columns: Column<HealthEvent>[] = [
+const columns: Column<HealthEventRow>[] = [
   {
     header: "DATE",
     cell: (row) => <CellStack primary={row.date} secondary={row.reportedBy} />,
@@ -93,9 +93,66 @@ const columns: Column<HealthEvent>[] = [
     width: 130,
     cell: (row) => <Badge tone={row.statusTone}>{row.status}</Badge>,
   },
+  {
+    header: "",
+    width: 72,
+    align: "right",
+    cell: (row) => (
+      <div className="flex items-center justify-end">
+        {row.statusKey === "resolved" ? null : (
+          <ResolveHealthEventDialog id={row.id} condition={row.condition} />
+        )}
+        <DeleteHealthEventDialog id={row.id} />
+      </div>
+    ),
+  },
 ];
 
-export default function HealthPage() {
+export default async function HealthPage({
+  searchParams,
+}: PageProps<"/health">) {
+  const params = await searchParams;
+  const window = pageWindow(params);
+  const filters = {
+    search: param(params, "q"),
+    flock: param(params, "flock"),
+    house: param(params, "house"),
+    status: param(params, "status"),
+  };
+
+  const [
+    kpis,
+    healthEventsTrend,
+    casesByCondition,
+    healthAlerts,
+    events,
+    flocks,
+    houses,
+  ] = await Promise.all([
+    getHealthKpis(),
+    getHealthEventsTrend(),
+    getCasesByCondition(),
+    getHealthAlerts(),
+    getHealthEvents(filters, window.limit, window.offset),
+    getFlockOptions({ activeOnly: true }),
+    getHouseOptions(),
+  ]);
+
+  const healthEvents = paginate(events, window);
+
+  const eventSeries = [
+    {
+      name: "Resolved",
+      color: chartColors.primary,
+      values: healthEventsTrend.resolved,
+    },
+    { name: "Open", color: "#F59E0B", values: healthEventsTrend.open },
+  ];
+  const caseTotal = casesByCondition.reduce(
+    (sum, slice) => sum + slice.value,
+    0,
+  );
+
   return (
     <>
       <PageHeader
@@ -106,57 +163,63 @@ export default function HealthPage() {
         <Button variant="secondary" icon={Stethoscope}>
           Vet log
         </Button>
-        <Button icon={Plus}>Log Health Event</Button>
+        <HealthEventDialog flocks={flocks} houses={houses} />
       </PageHeader>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
         <KpiCard
           label="Active Cases"
           icon={Activity}
-          iconTone="warning"
-          value="3"
-          delta="Watch"
-          deltaIcon={TriangleAlert}
-          deltaTone="warning"
-          note="2 flocks affected"
+          iconTone={kpis.activeCases ? "warning" : undefined}
+          value={count(kpis.activeCases)}
+          delta={kpis.activeCases ? "Watch" : "Clear"}
+          deltaIcon={kpis.activeCases ? TriangleAlert : Minus}
+          deltaTone={kpis.activeCases ? "warning" : "success"}
+          note={`${kpis.affectedFlocks} flock${
+            kpis.affectedFlocks === 1 ? "" : "s"
+          } affected`}
         />
         <KpiCard
           label="Vaccinations Due"
           icon={Syringe}
-          iconTone="info"
-          value="2"
-          delta="Soon"
-          deltaIcon={Clock}
-          deltaTone="info"
-          note="within 7 days"
+          iconTone={kpis.vaccinationsOverdue ? "error" : "info"}
+          value={count(kpis.vaccinationsDue)}
+          delta={kpis.vaccinationsOverdue ? "Overdue" : "Soon"}
+          deltaIcon={kpis.vaccinationsOverdue ? TriangleAlert : Clock}
+          deltaTone={kpis.vaccinationsOverdue ? "error" : "info"}
+          note={
+            kpis.vaccinationsOverdue
+              ? `${kpis.vaccinationsOverdue} past due`
+              : "within 7 days"
+          }
         />
         <KpiCard
           label="Ongoing Treatments"
           icon={Pill}
-          value="2"
+          value={count(kpis.inTreatment)}
           delta="—"
           deltaIcon={Minus}
           deltaTone="neutral"
-          note="day 3 of 5"
+          note="flocks under treatment"
         />
         <KpiCard
           label="Medicines in Stock"
           icon={Package}
-          iconTone="warning"
-          value="24"
-          delta="Check"
-          deltaIcon={TriangleAlert}
-          deltaTone="warning"
-          note="2 expiring soon"
+          iconTone={kpis.medicinesExpiring ? "warning" : undefined}
+          value={count(kpis.medicineItems)}
+          delta={kpis.medicinesExpiring ? "Check" : "OK"}
+          deltaIcon={kpis.medicinesExpiring ? TriangleAlert : Minus}
+          deltaTone={kpis.medicinesExpiring ? "warning" : "success"}
+          note={`${kpis.medicinesExpiring} expiring soon`}
         />
         <KpiCard
           label="Health Alerts"
           icon={BellRing}
-          iconTone="error"
-          value="1"
-          delta="Urgent"
-          deltaIcon={TriangleAlert}
-          deltaTone="error"
+          iconTone={kpis.escalated ? "error" : undefined}
+          value={count(kpis.escalated)}
+          delta={kpis.escalated ? "Urgent" : "Clear"}
+          deltaIcon={kpis.escalated ? TriangleAlert : Minus}
+          deltaTone={kpis.escalated ? "error" : "success"}
           note="needs vet review"
         />
       </div>
@@ -184,7 +247,7 @@ export default function HealthPage() {
             <Donut
               slices={casesByCondition}
               size={150}
-              caption="35"
+              caption={count(caseTotal)}
               captionLabel="cases"
             />
             <DonutLegend slices={casesByCondition} />
@@ -229,12 +292,15 @@ export default function HealthPage() {
         <PanelHead inset title="Health Events" />
         <DataTable
           columns={columns}
-          rows={healthEvents}
-          rowKey={(row) => row.date + row.flock}
+          rows={healthEvents.rows}
+          rowKey={(row) => String(row.id)}
         />
-        <TableFooter summary="Showing 5 of 35 events">
-          <GhostButton>Previous</GhostButton>
-          <GhostButton>Next</GhostButton>
+        <TableFooter summary={`Showing ${healthEvents.range} events`}>
+          <Pager
+            page={healthEvents.page}
+            hasNext={healthEvents.hasNext}
+            hasPrevious={healthEvents.hasPrevious}
+          />
         </TableFooter>
       </Card>
     </>

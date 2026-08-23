@@ -1,20 +1,86 @@
+import "server-only";
+
+import { and, desc, eq, sql } from "drizzle-orm";
+
 import type { Tone } from "@/components/ui/tone";
+import { db } from "@/lib/db";
+import {
+  inventoryItems,
+  inventoryMovements,
+  suppliers,
+} from "@/lib/db/schema";
 
-export const medicineUsage = {
-  labels: ["Mar", "Apr", "May", "Jun", "Jul", "Aug"],
-  ticks: ["1000", "667", "333", "0"],
-  max: 1000,
-  values: [620, 713, 680, 793, 840, 820],
-};
+import {
+  axis,
+  count,
+  daysBetween,
+  DONUT_COLORS,
+  formatDate,
+  money,
+  recentMonths,
+} from "./common";
+import { getFarmSettings } from "./settings";
 
-export const stockByCategory = [
-  { name: "Vaccines", value: 9, color: "#7C3AED", display: "9" },
-  { name: "Antibiotics", value: 6, color: "#A78BFA", display: "6" },
-  { name: "Vitamins", value: 5, color: "#C4B5FD", display: "5" },
-  { name: "Disinfectants", value: 4, color: "#DDD6FE", display: "4" },
-];
+/**
+ * Medicines are inventory items in the `medicine` category; this board is the
+ * veterinary view of that register, keyed on expiry rather than value.
+ */
+const IS_MEDICINE = and(
+  eq(inventoryItems.category, "medicine"),
+  eq(inventoryItems.isActive, true),
+);
 
-export type Medicine = {
+/** Units issued per month, which is what the usage chart plots. */
+export async function getMedicineUsage(months = 6) {
+  const range = recentMonths(months);
+
+  const rows = await db
+    .select({
+      month: sql<string>`to_char(date_trunc('month', ${inventoryMovements.occurredOn}), 'YYYY-MM')`,
+      issued: sql<number>`coalesce(sum(${inventoryMovements.quantity}), 0)::int`,
+    })
+    .from(inventoryMovements)
+    .innerJoin(inventoryItems, eq(inventoryItems.id, inventoryMovements.itemId))
+    .where(
+      and(
+        eq(inventoryItems.category, "medicine"),
+        eq(inventoryMovements.type, "stock_out"),
+        sql`${inventoryMovements.occurredOn} >= date_trunc('month', current_date) - ${sql.raw(
+          `interval '${months - 1} months'`,
+        )}`,
+      ),
+    )
+    .groupBy(sql`date_trunc('month', ${inventoryMovements.occurredOn})`);
+
+  const byMonth = new Map(rows.map((row) => [row.month, row.issued]));
+  const values = range.map((entry) => byMonth.get(entry.key) ?? 0);
+  const { max, ticks } = axis(Math.max(...values, 1));
+
+  return { labels: range.map((entry) => entry.label), ticks, max, values };
+}
+
+/** Item counts per medicine subcategory (vaccines, antibiotics, …). */
+export async function getStockByCategory() {
+  const rows = await db
+    .select({
+      subcategory: sql<string>`coalesce(${inventoryItems.subcategory}, 'Other')`,
+      total: sql<number>`count(*)::int`,
+    })
+    .from(inventoryItems)
+    .where(IS_MEDICINE)
+    .groupBy(sql`coalesce(${inventoryItems.subcategory}, 'Other')`)
+    .orderBy(desc(sql`count(*)`));
+
+  return rows.map((row, index) => ({
+    name: row.subcategory,
+    value: row.total,
+    color: DONUT_COLORS[index] ?? DONUT_COLORS.at(-1)!,
+    display: count(row.total),
+  }));
+}
+
+export type MedicineRow = {
+  id: number;
   name: string;
   supplier: string;
   category: string;
@@ -30,85 +96,122 @@ export type Medicine = {
   statusTone: Tone;
 };
 
-export const medicines: Medicine[] = [
-  {
-    name: "Newcastle Vaccine (Lasota)",
-    supplier: "VetPro Nigeria",
-    category: "Vaccine",
-    quantity: "12",
-    unit: "vials",
-    batch: "NCD-2411",
-    expiry: "28 Aug 2026",
-    expiryNote: "19 days left",
-    unitCost: "$14.50",
-    status: "Expiring soon",
-    statusTone: "warning",
-  },
-  {
-    name: "Coccidiostat Premix",
-    supplier: "VetPro Nigeria",
-    category: "Antibiotic",
-    quantity: "8",
-    quantityTone: "error",
-    unit: "kg",
-    batch: "CCP-0288",
-    expiry: "19 Aug 2026",
-    expiryNote: "10 days left",
-    unitCost: "$31.00",
-    status: "Expiring · low",
-    statusTone: "error",
-  },
-  {
-    name: "Tylosin Soluble Powder",
-    supplier: "VetPro Nigeria",
-    category: "Antibiotic",
-    quantity: "14",
-    unit: "sachets",
-    batch: "TYL-1180",
-    expiry: "04 Mar 2027",
-    expiryNote: "207 days left",
-    unitCost: "$8.20",
-    status: "In stock",
-    statusTone: "success",
-  },
-  {
-    name: "Gumboro Vaccine",
-    supplier: "Zoetis",
-    category: "Vaccine",
-    quantity: "6",
-    quantityTone: "warning",
-    unit: "vials",
-    batch: "GMB-0921",
-    expiry: "12 Dec 2026",
-    expiryNote: "125 days left",
-    unitCost: "$16.80",
-    status: "Below minimum",
-    statusTone: "error",
-  },
-  {
-    name: "Multivitamin Electrolyte",
-    supplier: "Delta Minerals",
-    category: "Vitamin",
-    quantity: "22",
-    unit: "kg",
-    batch: "MVE-0455",
-    expiry: "30 Jun 2027",
-    expiryNote: "325 days left",
-    unitCost: "$5.40",
-    status: "In stock",
-    statusTone: "success",
-  },
-  {
-    name: "Iodine Disinfectant",
-    supplier: "AgriTech Ltd",
-    category: "Disinfectant",
-    quantity: "9",
-    unit: "litres",
-    batch: "IOD-0710",
-    expiry: "18 Jan 2028",
-    expiryNote: "527 days left",
-    unitCost: "$6.10",
-    status: "In stock",
-    statusTone: "success",
-  },
-];
+export type MedicineFilters = {
+  search?: string;
+  subcategory?: string;
+  supplier?: string;
+};
+
+export async function getMedicines(
+  filters: MedicineFilters = {},
+): Promise<MedicineRow[]> {
+  const settings = await getFarmSettings();
+  const conditions = [IS_MEDICINE];
+
+  if (filters.subcategory) {
+    conditions.push(eq(inventoryItems.subcategory, filters.subcategory));
+  }
+  if (filters.supplier) conditions.push(eq(suppliers.name, filters.supplier));
+  if (filters.search) {
+    const term = `%${filters.search.toLowerCase()}%`;
+    conditions.push(
+      sql`(lower(${inventoryItems.name}) like ${term} or lower(coalesce(${inventoryItems.batch}, '')) like ${term})`,
+    );
+  }
+
+  const rows = await db
+    .select({
+      id: inventoryItems.id,
+      name: inventoryItems.name,
+      subcategory: inventoryItems.subcategory,
+      quantity: inventoryItems.quantity,
+      unit: inventoryItems.unit,
+      unitCostCents: inventoryItems.unitCostCents,
+      minStock: inventoryItems.minStock,
+      batch: inventoryItems.batch,
+      expiryDate: inventoryItems.expiryDate,
+      supplierName: suppliers.name,
+    })
+    .from(inventoryItems)
+    .leftJoin(suppliers, eq(suppliers.id, inventoryItems.supplierId))
+    .where(and(...conditions))
+    .orderBy(
+      // Whatever expires first needs attention first; undated items sink.
+      sql`${inventoryItems.expiryDate} asc nulls last`,
+      inventoryItems.name,
+    );
+
+  return rows.map((row) => {
+    const daysLeft = row.expiryDate ? daysBetween(new Date(), row.expiryDate) : null;
+    const expiring =
+      daysLeft !== null && daysLeft <= settings.medicineExpiryWarningDays;
+    const expired = daysLeft !== null && daysLeft < 0;
+    const belowMinimum = row.quantity < row.minStock;
+    const nearMinimum = !belowMinimum && row.quantity <= row.minStock * 1.1;
+
+    let status = "In stock";
+    let statusTone: Tone = "success";
+    if (expired) {
+      status = "Expired";
+      statusTone = "error";
+    } else if (expiring && belowMinimum) {
+      status = "Expiring · low";
+      statusTone = "error";
+    } else if (belowMinimum) {
+      status = "Below minimum";
+      statusTone = "error";
+    } else if (expiring) {
+      status = "Expiring soon";
+      statusTone = "warning";
+    } else if (nearMinimum) {
+      status = "Reorder soon";
+      statusTone = "warning";
+    }
+
+    return {
+      id: row.id,
+      name: row.name,
+      supplier: row.supplierName ?? "—",
+      category: row.subcategory ?? "Other",
+      quantity: count(row.quantity),
+      quantityTone: belowMinimum ? "error" : nearMinimum ? "warning" : undefined,
+      unit: row.unit,
+      batch: row.batch ?? "—",
+      expiry: row.expiryDate ? formatDate(row.expiryDate) : "—",
+      expiryNote:
+        daysLeft === null
+          ? "No expiry"
+          : daysLeft < 0
+            ? `Expired ${Math.abs(daysLeft)} days ago`
+            : `${daysLeft} days left`,
+      unitCost: money(row.unitCostCents),
+      status,
+      statusTone,
+    };
+  });
+}
+
+export async function getMedicineKpis() {
+  const settings = await getFarmSettings();
+
+  const [row] = await db
+    .select({
+      items: sql<number>`count(*)::int`,
+      value: sql<number>`coalesce(sum(${inventoryItems.quantity} * ${inventoryItems.unitCostCents}), 0)::bigint`,
+      belowMinimum: sql<number>`count(*) filter (where ${inventoryItems.quantity} < ${inventoryItems.minStock})::int`,
+      expiring: sql<number>`count(*) filter (where ${inventoryItems.expiryDate} is not null and ${inventoryItems.expiryDate} between current_date and current_date + ${settings.medicineExpiryWarningDays}::int)::int`,
+      expired: sql<number>`count(*) filter (where ${inventoryItems.expiryDate} is not null and ${inventoryItems.expiryDate} < current_date)::int`,
+    })
+    .from(inventoryItems)
+    .where(IS_MEDICINE);
+
+  return {
+    items: row.items,
+    totalValue: Number(row.value),
+    totalValueLabel: money(Number(row.value)),
+    belowMinimum: row.belowMinimum,
+    expiring: row.expiring,
+    expired: row.expired,
+    warningDays: settings.medicineExpiryWarningDays,
+  };
+}

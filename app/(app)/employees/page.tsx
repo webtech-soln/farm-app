@@ -3,7 +3,6 @@ import {
   CircleCheckBig,
   Minus,
   Phone,
-  Plus,
   TrendingDown,
   TrendingUp,
   UserCheck,
@@ -11,7 +10,13 @@ import {
   Warehouse,
 } from "lucide-react";
 
+import {
+  DeactivateUserDialog,
+  EmployeeDialog,
+  type UserFormValues,
+} from "@/components/dialogs/people-dialogs";
 import { PageHeader } from "@/components/layout/page-header";
+import { paginateAll, param } from "@/lib/pagination";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -23,12 +28,21 @@ import {
   TableFooter,
   type Column,
 } from "@/components/ui/data-table";
-import { GhostButton } from "@/components/ui/ghost-button";
+import { Pager } from "@/components/ui/pager";
 import { KpiCard, KpiGrid } from "@/components/ui/kpi-card";
 import { toneText } from "@/components/ui/tone";
-import { employees, type Employee } from "@/lib/data/employees";
+import {
+  getEmployeeKpis,
+  getEmployees,
+  type EmployeeRow,
+  getUserFormValues,
+} from "@/lib/data/employees";
+import { count, percent } from "@/lib/format";
 
-const columns: Column<Employee>[] = [
+function buildColumns(
+  formValues: Map<number, UserFormValues>,
+): Column<EmployeeRow>[] {
+  return [
   {
     header: "EMPLOYEE",
     cell: (row) => <CellStack primary={row.name} secondary={row.joined} />,
@@ -77,9 +91,43 @@ const columns: Column<Employee>[] = [
       </Badge>
     ),
   },
-];
+    {
+      header: "",
+      width: 72,
+      align: "right",
+      cell: (row) => (
+        <div className="flex items-center justify-end">
+          <EmployeeDialog person={formValues.get(row.id)} />
+          <DeactivateUserDialog id={row.id} name={row.name} />
+        </div>
+      ),
+    },
+  ];
+}
 
-export default function EmployeesPage() {
+export default async function EmployeesPage({
+  searchParams,
+}: PageProps<"/employees">) {
+  const params = await searchParams;
+  const filters = {
+    search: param(params, "q"),
+    role: param(params, "role"),
+    dutyStatus: param(params, "duty"),
+  };
+
+  const [kpis, allEmployees, formValues] = await Promise.all([
+    getEmployeeKpis(),
+    getEmployees(filters),
+    getUserFormValues(),
+  ]);
+
+  const employees = paginateAll(allEmployees, params);
+  const columns = buildColumns(formValues);
+
+  const onDutyShare = kpis.total
+    ? percent((kpis.onDuty / kpis.total) * 100, 0)
+    : "—";
+
   return (
     <>
       <PageHeader
@@ -90,51 +138,55 @@ export default function EmployeesPage() {
         <Button variant="secondary" icon={CalendarCheck}>
           Attendance
         </Button>
-        <Button icon={Plus}>Add Employee</Button>
+        <EmployeeDialog />
       </PageHeader>
 
       <KpiGrid>
         <KpiCard
           label="Total Employees"
           icon={Users}
-          value="12"
-          delta="+1"
-          deltaIcon={TrendingUp}
+          value={count(kpis.total)}
+          delta={`${kpis.roles} role${kpis.roles === 1 ? "" : "s"}`}
+          deltaIcon={Users}
           deltaTone="neutral"
-          note="3 roles"
+          note="active accounts"
         />
         <KpiCard
           label="On Duty Today"
           icon={UserCheck}
-          value="9"
-          delta="75%"
+          value={count(kpis.onDuty)}
+          delta={onDutyShare}
           deltaIcon={Minus}
           deltaTone="neutral"
-          note="3 on leave"
+          note={`${kpis.onLeave} on leave`}
         />
         <KpiCard
           label="Open Tasks"
           icon={CircleCheckBig}
-          value="14"
-          delta="↓ 3"
-          deltaIcon={TrendingDown}
-          deltaTone="success"
-          note="vs yesterday"
+          value={count(kpis.openTasks)}
+          delta={
+            kpis.overdueTasks
+              ? `${kpis.overdueTasks} overdue`
+              : "None overdue"
+          }
+          deltaIcon={kpis.overdueTasks ? TrendingUp : TrendingDown}
+          deltaTone={kpis.overdueTasks ? "error" : "success"}
+          note="across the team"
         />
         <KpiCard
           label="Attendance (month)"
           icon={CalendarCheck}
-          value="96%"
-          delta="+2pp"
+          value={kpis.attendanceLabel}
+          delta="Average"
           deltaIcon={TrendingUp}
-          deltaTone="success"
-          note="vs last month"
+          deltaTone={kpis.attendance >= 95 ? "success" : "warning"}
+          note="active staff"
         />
       </KpiGrid>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {employees.map((employee) => (
-          <Card key={employee.name} className="flex flex-col gap-3.5 p-4">
+        {allEmployees.map((employee) => (
+          <Card key={employee.id} className="flex flex-col gap-3.5 p-4">
             <div className="flex items-center gap-3">
               <Avatar initials={employee.initials} size={44} />
               <div className="flex min-w-0 flex-1 flex-col gap-0.5">
@@ -176,12 +228,17 @@ export default function EmployeesPage() {
         <PanelHead inset title="All Employees" />
         <DataTable
           columns={columns}
-          rows={employees}
-          rowKey={(row) => row.name}
+          rows={employees.rows}
+          rowKey={(row) => String(row.id)}
         />
-        <TableFooter summary="Showing 6 of 12 employees">
-          <GhostButton>Previous</GhostButton>
-          <GhostButton>Next</GhostButton>
+        <TableFooter
+          summary={`Showing ${employees.range} of ${kpis.total} employees`}
+        >
+          <Pager
+            page={employees.page}
+            hasNext={employees.hasNext}
+            hasPrevious={employees.hasPrevious}
+          />
         </TableFooter>
       </Card>
     </>

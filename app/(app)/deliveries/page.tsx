@@ -4,7 +4,6 @@ import {
   Clock,
   Map,
   Navigation,
-  Plus,
   TrendingUp,
   TriangleAlert,
   Truck,
@@ -16,7 +15,12 @@ import {
   chartColors,
 } from "@/components/charts/bar-chart";
 import { ProgressRail } from "@/components/charts/progress-rail";
+import {
+  DeliveryDialog,
+  DeliveryStatusDialog,
+} from "@/components/dialogs/sales-dialogs";
 import { PageHeader } from "@/components/layout/page-header";
+import { pageWindow, paginate, param } from "@/lib/pagination";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -29,63 +33,107 @@ import {
   type Column,
 } from "@/components/ui/data-table";
 import { FilterBar } from "@/components/ui/filter-bar";
-import { GhostButton } from "@/components/ui/ghost-button";
+import { Pager } from "@/components/ui/pager";
 import { KpiCard, KpiGrid } from "@/components/ui/kpi-card";
 import {
-  deliveries,
-  deliveriesPerDay,
-  drivers,
-  type Delivery,
+  getDeliveries,
+  getDeliveriesPerDay,
+  getDeliveryKpis,
+  getDrivers,
+  type DeliveryRow,
+  getDriverOptions,
+  getUndispatchedOrders,
 } from "@/lib/data/deliveries";
+import { count, percent } from "@/lib/format";
 
-const daySeries = [
-  {
-    name: "Completed",
-    color: chartColors.primary,
-    values: deliveriesPerDay.completed,
-  },
-  { name: "Scheduled", color: "#DDD6FE", values: deliveriesPerDay.scheduled },
-];
+function buildColumns(): Column<DeliveryRow>[] {
+  return [
+    {
+      header: "ORDER",
+      cell: (row) => <CellStack primary={row.reference} secondary={row.load} />,
+    },
+    {
+      header: "CUSTOMER",
+      width: 180,
+      cell: (row) => <CellText>{row.customer}</CellText>,
+    },
+    {
+      header: "DESTINATION",
+      width: 180,
+      cell: (row) => <CellText>{row.destination}</CellText>,
+      hideBelow: "md",
+    },
+    {
+      header: "DRIVER",
+      width: 150,
+      cell: (row) => <CellText>{row.driver}</CellText>,
+      hideBelow: "lg",
+    },
+    {
+      header: "DATE",
+      width: 130,
+      cell: (row) => <CellStack primary={row.date} secondary={row.window} />,
+    },
+    {
+      header: "STATUS",
+      width: 120,
+      cell: (row) => (
+        <Badge tone={row.statusTone} dot={row.statusDot ?? true}>
+          {row.status}
+        </Badge>
+      ),
+    },
+    {
+      header: "",
+      width: 48,
+      align: "right",
+      cell: (row) => (
+        <div className="flex items-center justify-end">
+          <DeliveryStatusDialog
+            id={row.id}
+            destination={row.destination}
+            status={row.statusKey}
+          />
+        </div>
+      ),
+    },
+  ];
+}
 
-const columns: Column<Delivery>[] = [
-  {
-    header: "ORDER",
-    cell: (row) => <CellStack primary={row.reference} secondary={row.load} />,
-  },
-  {
-    header: "CUSTOMER",
-    width: 180,
-    cell: (row) => <CellText>{row.customer}</CellText>,
-  },
-  {
-    header: "DESTINATION",
-    width: 180,
-    cell: (row) => <CellText>{row.destination}</CellText>,
-    hideBelow: "md",
-  },
-  {
-    header: "DRIVER",
-    width: 150,
-    cell: (row) => <CellText>{row.driver}</CellText>,
-    hideBelow: "lg",
-  },
-  {
-    header: "DATE",
-    width: 130,
-    cell: (row) => <CellStack primary={row.date} secondary={row.window} />,
-  },
-  {
-    header: "STATUS",
-    width: 120,
-    cell: (row) => (
-      <Badge tone={row.statusTone} dot={row.statusDot ?? true}>
-        {row.status}
-      </Badge>
-    ),
-  },
-];
+export default async function DeliveriesPage({
+  searchParams,
+}: PageProps<"/deliveries">) {
+  const params = await searchParams;
+  const window = pageWindow(params);
+  const filters = {
+    search: param(params, "q"),
+    status: param(params, "status"),
+    driver: param(params, "driver"),
+    date: param(params, "date"),
+  };
 
-export default function DeliveriesPage() {
+  const [kpis, deliveriesPerDay, drivers, rows, openOrders, driverOptions] =
+    await Promise.all([
+    getDeliveryKpis(),
+    getDeliveriesPerDay(),
+    getDrivers(),
+    getDeliveries(filters, window.limit, window.offset),
+    getUndispatchedOrders(),
+    getDriverOptions(),
+  ]);
+
+  const deliveries = paginate(rows, window);
+  const columns = buildColumns();
+
+  const daySeries = [
+    {
+      name: "Completed",
+      color: chartColors.primary,
+      values: deliveriesPerDay.completed,
+    },
+    { name: "Scheduled", color: "#DDD6FE", values: deliveriesPerDay.scheduled },
+  ];
+
   return (
     <>
       <PageHeader
@@ -96,46 +144,52 @@ export default function DeliveriesPage() {
         <Button variant="secondary" icon={Map}>
           Route plan
         </Button>
-        <Button icon={Plus}>Schedule Delivery</Button>
+        <DeliveryDialog orders={openOrders} drivers={driverOptions} />
       </PageHeader>
 
       <KpiGrid>
         <KpiCard
           label="Pending Dispatch"
           icon={Clock}
-          iconTone="warning"
-          value="6"
-          delta="Act"
+          iconTone={kpis.overdueDispatch ? "warning" : undefined}
+          value={count(kpis.pendingDispatch)}
+          delta={kpis.overdueDispatch ? "Act" : "On track"}
           deltaIcon={TriangleAlert}
-          deltaTone="warning"
-          note="2 overdue"
+          deltaTone={kpis.overdueDispatch ? "warning" : "success"}
+          note={`${kpis.overdueDispatch} overdue`}
         />
         <KpiCard
           label="Today's Deliveries"
           icon={CalendarDays}
-          value="9"
-          delta="5 left"
+          value={count(kpis.today)}
+          delta={`${kpis.remainingToday} left`}
           deltaIcon={TrendingUp}
           deltaTone="neutral"
-          note="4 completed"
+          note={`${kpis.completedToday} completed`}
         />
         <KpiCard
           label="In Transit"
           icon={Truck}
-          value="3"
-          delta="Live"
+          value={count(kpis.inTransit)}
+          delta={kpis.inTransit ? "Live" : "Idle"}
           deltaIcon={Navigation}
-          deltaTone="info"
-          note="2 drivers on road"
+          deltaTone={kpis.inTransit ? "info" : "neutral"}
+          note={`${kpis.driversOnRoad} driver${
+            kpis.driversOnRoad === 1 ? "" : "s"
+          } on road`}
         />
         <KpiCard
           label="Completed (month)"
           icon={CircleCheckBig}
-          value="142"
-          delta="+12"
+          value={count(kpis.completedThisMonth)}
+          delta={
+            kpis.monthChange >= 0
+              ? `+${kpis.monthChange}`
+              : String(kpis.monthChange)
+          }
           deltaIcon={TrendingUp}
-          deltaTone="success"
-          note="98.6% on time"
+          deltaTone={kpis.monthChange >= 0 ? "success" : "warning"}
+          note={`${percent(kpis.successRate)} delivered`}
         />
       </KpiGrid>
 
@@ -158,10 +212,15 @@ export default function DeliveriesPage() {
         </Card>
 
         <Card className="flex flex-col gap-4 p-4 xl:w-[440px]">
-          <PanelHead title="Driver Workload" subtitle="Today · 9 deliveries" />
+          <PanelHead
+            title="Driver Workload"
+            subtitle={`Today · ${kpis.today} deliver${
+              kpis.today === 1 ? "y" : "ies"
+            }`}
+          />
           <ul className="flex flex-col gap-3.5">
             {drivers.map((driver) => (
-              <li key={driver.name} className="flex flex-col gap-2">
+              <li key={driver.id} className="flex flex-col gap-2">
                 <div className="flex items-center gap-2.5">
                   <Avatar initials={driver.initials} />
                   <div className="flex min-w-0 flex-1 flex-col gap-0.5">
@@ -183,19 +242,42 @@ export default function DeliveriesPage() {
 
       <FilterBar
         placeholder="Search order or destination…"
-        selects={["Driver", "Status", "Date"]}
+        filters={[
+          {
+            name: "driver",
+            label: "Driver",
+            options: driverOptions.map((driver) => ({
+              value: driver.name,
+              label: driver.name,
+            })),
+          },
+          {
+            name: "status",
+            label: "Status",
+            options: [
+              { value: "scheduled", label: "Scheduled" },
+              { value: "preparing", label: "Preparing" },
+              { value: "in_transit", label: "In transit" },
+              { value: "delivered", label: "Delivered" },
+              { value: "failed", label: "Failed" },
+            ],
+          },
+        ]}
       />
 
       <Card className="flex flex-col">
         <PanelHead inset title="Delivery Schedule" />
         <DataTable
           columns={columns}
-          rows={deliveries}
-          rowKey={(row) => row.reference + row.date}
+          rows={deliveries.rows}
+          rowKey={(row) => String(row.id)}
         />
-        <TableFooter summary="Showing 6 of 34 deliveries">
-          <GhostButton>Previous</GhostButton>
-          <GhostButton>Next</GhostButton>
+        <TableFooter summary={`Showing ${deliveries.range} deliveries`}>
+          <Pager
+            page={deliveries.page}
+            hasNext={deliveries.hasNext}
+            hasPrevious={deliveries.hasPrevious}
+          />
         </TableFooter>
       </Card>
     </>

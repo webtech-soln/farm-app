@@ -1,10 +1,7 @@
 import {
   Banknote,
   CalendarDays,
-  ChevronDown,
   CreditCard,
-  Download,
-  Plus,
   Receipt,
   TrendingUp,
   TriangleAlert,
@@ -17,10 +14,14 @@ import {
 } from "@/components/charts/bar-chart";
 import { Donut, DonutLegend } from "@/components/charts/donut";
 import { ProgressRail } from "@/components/charts/progress-rail";
+import { OrderDialog } from "@/components/dialogs/sales-dialogs";
+import { RangeSelect } from "@/components/ui/range-select";
+import { param } from "@/lib/pagination";
 import { PageHeader } from "@/components/layout/page-header";
+import { ExportButton } from "@/components/ui/export-button";
+import { getProductOptions } from "@/lib/data/products";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card, PanelHead } from "@/components/ui/card";
 import {
   CellStack,
@@ -28,22 +29,21 @@ import {
   DataTable,
   type Column,
 } from "@/components/ui/data-table";
-import { GhostButton } from "@/components/ui/ghost-button";
 import { KpiCard, KpiGrid } from "@/components/ui/kpi-card";
 import {
-  recentOrders,
-  salesByProduct,
-  salesTrend,
-  topCustomers,
-  type RecentOrder,
+  getCustomerOptions,
+  getTopCustomers,
+} from "@/lib/data/customers";
+import {
+  getRecentOrders,
+  getSalesByProduct,
+  getSalesKpis,
+  getSalesTrend,
+  type RecentOrderRow,
 } from "@/lib/data/sales";
+import { count, money, signedPercent } from "@/lib/format";
 
-const trendSeries = [
-  { name: "Revenue", color: chartColors.primary, values: salesTrend.revenue },
-  { name: "Target", color: "#DDD6FE", values: salesTrend.target },
-];
-
-const columns: Column<RecentOrder>[] = [
+const columns: Column<RecentOrderRow>[] = [
   {
     header: "ORDER",
     width: 124,
@@ -74,7 +74,38 @@ const columns: Column<RecentOrder>[] = [
   },
 ];
 
-export default function SalesPage() {
+export default async function SalesPage({
+  searchParams,
+}: PageProps<"/sales">) {
+  const params = await searchParams;
+  const months = Number(param(params, "months") ?? 8);
+  const [
+    kpis,
+    salesTrend,
+    salesByProduct,
+    recentOrders,
+    topCustomers,
+    customers,
+    products,
+  ] = await Promise.all([
+    getSalesKpis(),
+    getSalesTrend(months),
+    getSalesByProduct(),
+    getRecentOrders(),
+    getTopCustomers(),
+    getCustomerOptions(),
+    getProductOptions(),
+  ]);
+
+  const trendSeries = [
+    { name: "Revenue", color: chartColors.primary, values: salesTrend.revenue },
+    { name: "Target", color: "#DDD6FE", values: salesTrend.target },
+  ];
+  const productRevenue = salesByProduct.reduce(
+    (sum, slice) => sum + slice.value,
+    0,
+  );
+
   return (
     <>
       <PageHeader
@@ -82,49 +113,55 @@ export default function SalesPage() {
         breadcrumb={["Sales"]}
         subtitle="Revenue performance, orders and receivables at a glance."
       >
-        <Button variant="secondary" icon={Download}>
-          Export
-        </Button>
-        <Button icon={Plus}>Create Order</Button>
+        <ExportButton board="orders" />
+        <OrderDialog customers={customers} products={products} />
       </PageHeader>
 
       <KpiGrid>
         <KpiCard
           label="Today's Sales"
           icon={CalendarDays}
-          value="$1,240"
-          delta="+18%"
+          value={kpis.todayLabel}
+          delta={signedPercent(kpis.todayChangePct)}
           deltaIcon={TrendingUp}
-          deltaTone="success"
-          note="8 orders today"
+          deltaTone={kpis.todayChangePct >= 0 ? "success" : "warning"}
+          note={`${kpis.ordersToday} order${
+            kpis.ordersToday === 1 ? "" : "s"
+          } today`}
         />
         <KpiCard
           label="Monthly Sales"
           icon={Banknote}
-          value="$24,820"
-          delta="+12.4%"
+          value={kpis.monthLabel}
+          delta={signedPercent(kpis.monthChangePct)}
           deltaIcon={TrendingUp}
-          deltaTone="success"
+          deltaTone={kpis.monthChangePct >= 0 ? "success" : "warning"}
           note="vs last month"
         />
         <KpiCard
           label="Orders"
           icon={Receipt}
-          value="162"
-          delta="+14"
+          value={count(kpis.ordersThisMonth)}
+          delta={
+            kpis.ordersChange >= 0
+              ? `+${kpis.ordersChange}`
+              : String(kpis.ordersChange)
+          }
           deltaIcon={TrendingUp}
-          deltaTone="success"
+          deltaTone={kpis.ordersChange >= 0 ? "success" : "warning"}
           note="this month"
         />
         <KpiCard
           label="Outstanding Payments"
           icon={CreditCard}
-          iconTone="warning"
-          value="$7,840"
-          delta="Chase"
+          iconTone={kpis.unpaidOrders ? "warning" : undefined}
+          value={kpis.outstandingLabel}
+          delta={kpis.unpaidOrders ? "Chase" : "Settled"}
           deltaIcon={TriangleAlert}
-          deltaTone="warning"
-          note="9 invoices"
+          deltaTone={kpis.unpaidOrders ? "warning" : "success"}
+          note={`${kpis.unpaidOrders} invoice${
+            kpis.unpaidOrders === 1 ? "" : "s"
+          }`}
         />
       </KpiGrid>
 
@@ -134,7 +171,16 @@ export default function SalesPage() {
             title="Sales Trend"
             subtitle="Revenue vs target · last 8 months · $ thousands"
           >
-            <GhostButton icon={ChevronDown}>Last 8 months</GhostButton>
+            <RangeSelect
+              name="months"
+              defaultValue="8"
+              options={[
+                { value: "3", label: "Last 3 months" },
+                { value: "6", label: "Last 6 months" },
+                { value: "8", label: "Last 8 months" },
+                { value: "12", label: "Last 12 months" },
+              ]}
+            />
           </PanelHead>
           <ChartLegend series={trendSeries} />
           <BarChart
@@ -152,7 +198,7 @@ export default function SalesPage() {
             <Donut
               slices={salesByProduct}
               size={150}
-              caption="$24.8k"
+              caption={money(productRevenue / 100, { compact: true })}
               captionLabel="revenue"
             />
             <DonutLegend slices={salesByProduct} />
@@ -162,11 +208,15 @@ export default function SalesPage() {
 
       <div className="flex flex-col gap-4 xl:flex-row">
         <Card className="flex min-w-0 flex-1 flex-col">
-          <PanelHead inset title="Recent Orders" subtitle="Last 6 orders" />
+          <PanelHead
+            inset
+            title="Recent Orders"
+            subtitle={`Last ${recentOrders.length} orders`}
+          />
           <DataTable
             columns={columns}
             rows={recentOrders}
-            rowKey={(row) => row.reference}
+            rowKey={(row) => String(row.id)}
           />
         </Card>
 
@@ -177,7 +227,7 @@ export default function SalesPage() {
           />
           <ul className="flex flex-col gap-3.5">
             {topCustomers.map((customer) => (
-              <li key={customer.name} className="flex flex-col gap-2">
+              <li key={customer.id} className="flex flex-col gap-2">
                 <div className="flex items-center gap-2.5">
                   <Avatar initials={customer.initials} size={28} />
                   <span className="min-w-0 flex-1 truncate text-sm-plus font-medium text-ink">

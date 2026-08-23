@@ -2,16 +2,32 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ChevronsUpDown, Egg } from "lucide-react";
+import { Egg, LogOut } from "lucide-react";
 
+import { signOut } from "@/lib/actions/auth";
 import { isActive, navGroups } from "@/lib/nav";
+
+export type SidebarUser = {
+  initials: string;
+  name: string;
+  /** The person's job title, falling back to their role label. */
+  role: string;
+};
 
 /**
  * Board `00 · Component / Sidebar`. 248px at desktop, an icon-only rail at
  * tablet width (board 30), hidden entirely on phones where the bottom bar
  * takes over (board 29).
  */
-export function Sidebar() {
+export function Sidebar({
+  user,
+  farmName,
+  estate,
+}: {
+  user: SidebarUser;
+  farmName: string;
+  estate: string;
+}) {
   const pathname = usePathname();
 
   return (
@@ -22,9 +38,9 @@ export function Sidebar() {
         </div>
         <div className="flex flex-col gap-px max-xl:hidden">
           <span className="text-[15px] font-semibold tracking-[-0.2px] text-ink">
-            Jayda Farms
+            {farmName}
           </span>
-          <span className="text-xs text-ink-3">Ogun Estate</span>
+          <span className="text-xs text-ink-3">{estate}</span>
         </div>
       </div>
 
@@ -74,15 +90,26 @@ export function Sidebar() {
 
       <div className="flex items-center gap-2.5 border-t border-border-hair px-4 py-3.5 max-xl:justify-center max-xl:px-0">
         <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-violet-light">
-          <span className="text-sm font-semibold text-violet-deep">SA</span>
+          <span className="text-sm font-semibold text-violet-deep">
+            {user.initials}
+          </span>
         </div>
         <div className="flex flex-1 flex-col gap-px max-xl:hidden">
           <span className="text-sm-plus font-semibold text-ink">
-            Samuel Adeyemi
+            {user.name}
           </span>
-          <span className="text-xs text-ink-3">Farm Owner</span>
+          <span className="text-xs text-ink-3">{user.role}</span>
         </div>
-        <ChevronsUpDown className="size-[15px] shrink-0 text-ink-3 max-xl:hidden" />
+        <form action={signOut} className="max-xl:hidden">
+          <button
+            type="submit"
+            title="Sign out"
+            aria-label="Sign out"
+            className="flex size-7 items-center justify-center rounded-nav hover:bg-border-soft"
+          >
+            <LogOut className="size-[15px] shrink-0 text-ink-3" />
+          </button>
+        </form>
       </div>
     </aside>
   );

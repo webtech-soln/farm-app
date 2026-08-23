@@ -18,6 +18,7 @@ import {
   Receipt,
   Scale,
   Settings,
+  ShoppingCart,
   Stethoscope,
   Syringe,
   TrendingDown,
@@ -65,6 +66,7 @@ export const navGroups: NavItem[][] = [
     { label: "Suppliers", href: "/suppliers", icon: Truck },
   ],
   [
+    { label: "Sales Overview", href: "/sales", icon: ShoppingCart },
     { label: "Products", href: "/products", icon: Box },
     { label: "Customers", href: "/customers", icon: Users },
     { label: "Orders", href: "/orders", icon: Receipt },

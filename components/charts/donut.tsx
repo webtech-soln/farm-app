@@ -25,13 +25,15 @@ export function Donut({
 }) {
   const total = slices.reduce((sum, slice) => sum + slice.value, 0) || 1;
 
+  // Built with a loop rather than a closure over a running total, which the
+  // React compiler rejects as a reassignment during render.
+  const stops: string[] = [];
   let cursor = 0;
-  const stops = slices.map((slice) => {
+  for (const slice of slices) {
     const start = (cursor / total) * 360;
     cursor += slice.value;
-    const end = (cursor / total) * 360;
-    return `${slice.color} ${start}deg ${end}deg`;
-  });
+    stops.push(`${slice.color} ${start}deg ${(cursor / total) * 360}deg`);
+  }
 
   return (
     <div

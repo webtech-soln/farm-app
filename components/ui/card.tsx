@@ -6,12 +6,16 @@ import { cn } from "@/lib/cn";
 export function Card({
   className,
   children,
+  id,
 }: {
   className?: string;
   children: ReactNode;
+  /** Anchor target, used by the settings board's section links. */
+  id?: string;
 }) {
   return (
     <div
+      id={id}
       className={cn(
         "rounded-card border border-border-hair bg-card shadow-[0_1px_3px_rgba(24,24,27,0.05)]",
         className,

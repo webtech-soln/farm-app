@@ -2,61 +2,80 @@ import { notFound } from "next/navigation";
 import {
   Bird,
   CalendarClock,
-  Download,
   Gauge,
   HeartPulse,
   PackagePlus,
-  Pencil,
   Plus,
   Scale,
-  SlidersHorizontal,
   TrendingUp,
 } from "lucide-react";
 
 import { BarChart, ChartLegend, chartColors } from "@/components/charts/bar-chart";
+import { FlockFormDialog } from "@/components/dialogs/flock-dialogs";
 import { PageHeader } from "@/components/layout/page-header";
-import { Button } from "@/components/ui/button";
+import { ExportButton } from "@/components/ui/export-button";
+import { ButtonLink } from "@/components/ui/button";
 import { Card, PanelHead } from "@/components/ui/card";
-import { GhostButton } from "@/components/ui/ghost-button";
 import { MetricStrip } from "@/components/ui/metric-strip";
 import { Tabs } from "@/components/ui/tabs";
 import { Timeline } from "@/components/ui/timeline";
+import { getFlockFormValues } from "@/lib/data/flocks";
+import { getHouseOptions } from "@/lib/data/houses";
 import {
-  birdPopulation,
-  flockActivity,
-  flockFeed,
-  flockFinancials,
-  flockMortality,
-  weightGrowth,
+  getFlockActivity,
+  getFlockDetail,
+  getFlockFeedTrend,
+  getFlockFinancials,
+  getFlockMortalityTrend,
+  getFlockPopulation,
+  getFlockWeightGrowth,
 } from "@/lib/data/flock-detail";
-import { flocks } from "@/lib/data/flocks";
-
-export function generateStaticParams() {
-  return flocks.map((flock) => ({ flockId: flock.id }));
-}
+import { count } from "@/lib/format";
 
 export default async function FlockDetailPage({
   params,
 }: PageProps<"/flocks/[flockId]">) {
   const { flockId } = await params;
-  const flock = flocks.find((entry) => entry.id === flockId);
+  const flock = await getFlockDetail(flockId);
 
   if (!flock) notFound();
+
+  const [
+    weightGrowth,
+    birdPopulation,
+    flockFeed,
+    flockMortality,
+    flockActivity,
+    financials,
+    houses,
+    formValues,
+  ] = await Promise.all([
+    getFlockWeightGrowth(flock.id),
+    getFlockPopulation(flock.id),
+    getFlockFeedTrend(flock.id),
+    getFlockMortalityTrend(flock.id),
+    getFlockActivity(flock.id),
+    getFlockFinancials(flock.id),
+    getHouseOptions(),
+    getFlockFormValues(),
+  ]);
 
   return (
     <>
       <PageHeader
-        title={`Flock ${flock.id}`}
-        breadcrumb={["Farm", "Flocks", flock.id]}
-        subtitle={`${flock.breed} · ${flock.type} · ${flock.house} · placed ${flock.started.replace(/^Started /, "")}`}
+        title={`Flock ${flock.code}`}
+        breadcrumb={["Farm", "Flocks", flock.code]}
+        subtitle={`${flock.breed} · ${flock.typeLabel} · ${flock.house} · placed ${flock.started}`}
       >
-        <Button variant="secondary" icon={Pencil}>
-          Edit Flock
-        </Button>
-        <Button variant="secondary" icon={Download}>
-          Export
-        </Button>
-        <Button icon={Plus}>Add Record</Button>
+        <FlockFormDialog
+          houses={houses}
+          flock={formValues.get(flock.id)}
+          labelled
+        />
+        <ExportButton board="flocks" />
+        <ButtonLink href={`/records/daily?flock=${flock.code}`} icon={Plus}>
+          Add Record
+        </ButtonLink>
       </PageHeader>
 
       <MetricStrip
@@ -68,34 +87,25 @@ export default async function FlockDetailPage({
             label: "Mortality",
             value: flock.mortality,
             icon: HeartPulse,
-            valueTone: "success",
+            valueTone: flock.mortalityPct >= 3 ? "warning" : "success",
           },
           { label: "Avg Weight", value: flock.weight, icon: Scale },
-          { label: "FCR", value: "1.62", icon: Gauge },
+          { label: "FCR", value: flock.fcr, icon: Gauge },
         ]}
       />
 
       <Tabs
-        tabs={[
-          "Overview",
-          "Daily Records",
-          "Feed",
-          "Weight",
-          "Health",
-          "Mortality",
-          "Production",
-          "Financials",
-        ]}
+        tabs={["Weight", "Population", "Feed", "Mortality", "Activity", "Financials"]}
       />
 
       <div className="flex flex-col gap-4 xl:flex-row">
-        <Card className="flex flex-1 flex-col gap-4 p-4">
+        <Card className="flex flex-1 flex-col gap-4 p-4" id="weight">
           <PanelHead
             title="Weight Growth"
             subtitle="Sampled average vs Cobb 500 standard · kg"
           >
             <span className="rounded-full bg-violet-light px-2.5 py-1 text-xs-plus font-semibold text-violet-deep">
-              +0.06 kg vs standard
+              {weightGrowth.varianceLabel}
             </span>
           </PanelHead>
           <ChartLegend
@@ -124,10 +134,10 @@ export default async function FlockDetailPage({
           />
         </Card>
 
-        <Card className="flex flex-col gap-4 p-4 xl:w-[470px]">
+        <Card className="flex flex-col gap-4 p-4 xl:w-[470px]" id="population">
           <PanelHead
             title="Bird Population"
-            subtitle="Weekly count · 80 birds lost since placement"
+            subtitle={`Daily closing count · ${count(flock.lost)} birds lost since placement`}
           />
           <BarChart
             labels={birdPopulation.labels}
@@ -148,10 +158,10 @@ export default async function FlockDetailPage({
       </div>
 
       <div className="flex flex-col gap-4 xl:flex-row">
-        <Card className="flex flex-1 flex-col gap-4 p-4">
+        <Card className="flex flex-1 flex-col gap-4 p-4" id="feed">
           <PanelHead
             title="Feed Consumption"
-            subtitle="Daily intake · kg · cumulative 12,480 kg"
+            subtitle={`Daily intake · kg · cumulative ${count(flock.feedKg)} kg`}
           />
           <BarChart
             labels={flockFeed.labels}
@@ -169,10 +179,10 @@ export default async function FlockDetailPage({
           />
         </Card>
 
-        <Card className="flex flex-1 flex-col gap-4 p-4">
+        <Card className="flex flex-1 flex-col gap-4 p-4" id="mortality">
           <PanelHead
             title="Mortality"
-            subtitle="Weekly deaths · threshold 15/week"
+            subtitle={`Daily deaths · ${count(flockMortality.total)} in the last 14 days`}
           />
           <BarChart
             labels={flockMortality.labels}
@@ -192,20 +202,25 @@ export default async function FlockDetailPage({
       </div>
 
       <div className="flex flex-col gap-4 xl:flex-row">
-        <Card className="flex flex-1 flex-col gap-4 p-4">
+        <Card className="flex flex-1 flex-col gap-4 p-4" id="activity">
           <PanelHead title="Activity Timeline">
-            <GhostButton icon={SlidersHorizontal}>Filter</GhostButton>
+            <ButtonLink
+              href={`/records/mortality?flock=${flock.code}`}
+              variant="ghost"
+            >
+              Mortality log
+            </ButtonLink>
           </PanelHead>
           <Timeline events={flockActivity} />
         </Card>
 
-        <Card className="flex flex-col gap-4 p-4 xl:w-[470px]">
+        <Card className="flex flex-col gap-4 p-4 xl:w-[470px]" id="financials">
           <PanelHead
             title="Flock Financials"
             subtitle="Projected cycle margin"
           />
           <dl className="flex flex-col gap-2.5">
-            {flockFinancials.map((line) => (
+            {financials.lines.map((line) => (
               <div
                 key={line.label}
                 className={`flex items-center gap-3 ${
@@ -239,7 +254,7 @@ export default async function FlockDetailPage({
               Projected margin
             </span>
             <span className="text-[14px] font-semibold text-violet-deep">
-              34.7%
+              {financials.marginLabel}
             </span>
           </div>
         </Card>

@@ -1,7 +1,5 @@
 import {
   CreditCard,
-  Download,
-  Plus,
   Receipt,
   TrendingUp,
   TriangleAlert,
@@ -16,7 +14,10 @@ import {
   chartColors,
 } from "@/components/charts/bar-chart";
 import { Donut, DonutLegend } from "@/components/charts/donut";
+import { CustomerDialog } from "@/components/dialogs/sales-dialogs";
 import { PageHeader } from "@/components/layout/page-header";
+import { ExportButton } from "@/components/ui/export-button";
+import { paginateAll, param } from "@/lib/pagination";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, PanelHead } from "@/components/ui/card";
@@ -28,77 +29,117 @@ import {
   type Column,
 } from "@/components/ui/data-table";
 import { FilterBar } from "@/components/ui/filter-bar";
-import { GhostButton } from "@/components/ui/ghost-button";
+import { Pager } from "@/components/ui/pager";
 import { KpiCard, KpiGrid } from "@/components/ui/kpi-card";
 import { toneText } from "@/components/ui/tone";
 import {
-  customerMix,
-  customers,
-  revenueByType,
-  type Customer,
+  getCustomerKpis,
+  getCustomerMix,
+  getCustomers,
+  getRevenueByType,
+  type CustomerRow,
+  getCustomerFormValues,
+  type CustomerFormValues,
 } from "@/lib/data/customers";
+import { count, money, percent, signedPercent } from "@/lib/format";
 
-const mixSeries = [
-  {
-    name: "Returning",
-    color: chartColors.primary,
-    values: customerMix.returning,
-  },
-  { name: "New", color: chartColors.soft, values: customerMix.fresh },
-];
+function buildColumns(
+  formValues: Map<number, CustomerFormValues>,
+): Column<CustomerRow>[] {
+  return [
+    {
+      header: "CUSTOMER",
+      cell: (row) => <CellStack primary={row.name} secondary={row.descriptor} />,
+    },
+    {
+      header: "TYPE",
+      width: 120,
+      cell: (row) => <CellText>{row.type}</CellText>,
+      hideBelow: "md",
+    },
+    {
+      header: "ORDERS",
+      width: 80,
+      cell: (row) => <CellText strong>{row.orders}</CellText>,
+    },
+    {
+      header: "TOTAL PURCHASES",
+      width: 130,
+      cell: (row) => <CellText strong>{row.purchases}</CellText>,
+    },
+    {
+      header: "OUTSTANDING",
+      width: 120,
+      cell: (row) => (
+        <span
+          className={`text-sm-plus font-semibold ${
+            row.outstandingTone ? toneText[row.outstandingTone] : "text-ink-2"
+          }`}
+        >
+          {row.outstanding}
+        </span>
+      ),
+    },
+    {
+      header: "LAST PURCHASE",
+      width: 130,
+      cell: (row) => <CellText>{row.lastPurchase}</CellText>,
+      hideBelow: "lg",
+    },
+    {
+      header: "STATUS",
+      width: 110,
+      cell: (row) => (
+        <Badge tone={row.statusTone} dot={row.statusDot ?? true}>
+          {row.status}
+        </Badge>
+      ),
+    },
+    {
+      header: "",
+      width: 48,
+      align: "right",
+      cell: (row) => (
+        <div className="flex items-center justify-end">
+          <CustomerDialog customer={formValues.get(row.id)} />
+        </div>
+      ),
+    },
+  ];
+}
 
-const columns: Column<Customer>[] = [
-  {
-    header: "CUSTOMER",
-    cell: (row) => <CellStack primary={row.name} secondary={row.descriptor} />,
-  },
-  {
-    header: "TYPE",
-    width: 120,
-    cell: (row) => <CellText>{row.type}</CellText>,
-    hideBelow: "md",
-  },
-  {
-    header: "ORDERS",
-    width: 80,
-    cell: (row) => <CellText strong>{row.orders}</CellText>,
-  },
-  {
-    header: "TOTAL PURCHASES",
-    width: 130,
-    cell: (row) => <CellText strong>{row.purchases}</CellText>,
-  },
-  {
-    header: "OUTSTANDING",
-    width: 120,
-    cell: (row) => (
-      <span
-        className={`text-sm-plus font-semibold ${
-          row.outstandingTone ? toneText[row.outstandingTone] : "text-ink-2"
-        }`}
-      >
-        {row.outstanding}
-      </span>
-    ),
-  },
-  {
-    header: "LAST PURCHASE",
-    width: 130,
-    cell: (row) => <CellText>{row.lastPurchase}</CellText>,
-    hideBelow: "lg",
-  },
-  {
-    header: "STATUS",
-    width: 110,
-    cell: (row) => (
-      <Badge tone={row.statusTone} dot={row.statusDot ?? true}>
-        {row.status}
-      </Badge>
-    ),
-  },
-];
+export default async function CustomersPage({
+  searchParams,
+}: PageProps<"/customers">) {
+  const params = await searchParams;
+  const filters = {
+    search: param(params, "q"),
+    type: param(params, "type"),
+    status: param(params, "status"),
+  };
 
-export default function CustomersPage() {
+  const [kpis, customerMix, revenueByType, allCustomers, formValues] =
+    await Promise.all([
+    getCustomerKpis(),
+    getCustomerMix(),
+    getRevenueByType(),
+    getCustomers(filters),
+    getCustomerFormValues(),
+  ]);
+
+  const columns = buildColumns(formValues);
+  const customers = paginateAll(allCustomers, params);
+
+  const mixSeries = [
+    {
+      name: "Returning",
+      color: chartColors.primary,
+      values: customerMix.returning,
+    },
+    { name: "New", color: chartColors.soft, values: customerMix.fresh },
+  ];
+  const typeRevenue = revenueByType.reduce((sum, slice) => sum + slice.value, 0);
+
   return (
     <>
       <PageHeader
@@ -109,48 +150,52 @@ export default function CustomersPage() {
         <Button variant="secondary" icon={Upload}>
           Import
         </Button>
-        <Button variant="secondary" icon={Download}>
-          Export
-        </Button>
-        <Button icon={Plus}>Add Customer</Button>
+        <ExportButton board="customers" />
+        <CustomerDialog />
       </PageHeader>
 
       <KpiGrid>
         <KpiCard
           label="Total Customers"
           icon={Users}
-          value="64"
-          delta="+8.5%"
+          value={count(kpis.total)}
+          delta={kpis.newThisMonth ? `+${kpis.newThisMonth}` : "—"}
           deltaIcon={TrendingUp}
-          deltaTone="success"
-          note="5 new this month"
+          deltaTone={kpis.newThisMonth ? "success" : "neutral"}
+          note={`${kpis.newThisMonth} new this month`}
         />
         <KpiCard
           label="Active This Month"
           icon={UserCheck}
-          value="41"
-          delta="+3"
+          value={count(kpis.activeThisMonth)}
+          delta={
+            kpis.activeChange >= 0
+              ? `+${kpis.activeChange}`
+              : String(kpis.activeChange)
+          }
           deltaIcon={TrendingUp}
-          deltaTone="success"
-          note="64% of base"
+          deltaTone={kpis.activeChange >= 0 ? "success" : "warning"}
+          note={`${percent(kpis.activeSharePct, 0)} of base`}
         />
         <KpiCard
           label="Outstanding"
           icon={CreditCard}
-          iconTone="warning"
-          value="$7,840"
-          delta="Chase"
+          iconTone={kpis.accountsOwing ? "warning" : undefined}
+          value={kpis.outstandingLabel}
+          delta={kpis.accountsOwing ? "Chase" : "Settled"}
           deltaIcon={TriangleAlert}
-          deltaTone="warning"
-          note="9 invoices unpaid"
+          deltaTone={kpis.accountsOwing ? "warning" : "success"}
+          note={`${kpis.accountsOwing} account${
+            kpis.accountsOwing === 1 ? "" : "s"
+          } owing`}
         />
         <KpiCard
           label="Avg Order Value"
           icon={Receipt}
-          value="$312"
-          delta="+4.6%"
+          value={kpis.averageOrderLabel}
+          delta={signedPercent(kpis.averageOrderChangePct)}
           deltaIcon={TrendingUp}
-          deltaTone="success"
+          deltaTone={kpis.averageOrderChangePct >= 0 ? "success" : "warning"}
           note="vs last month"
         />
       </KpiGrid>
@@ -173,12 +218,12 @@ export default function CustomersPage() {
         </Card>
 
         <Card className="flex flex-col gap-4 p-4 xl:w-[440px]">
-          <PanelHead title="Revenue by Customer Type" subtitle="Last 30 days" />
+          <PanelHead title="Revenue by Customer Type" subtitle="All time" />
           <div className="flex flex-wrap items-center gap-6">
             <Donut
               slices={revenueByType}
               size={150}
-              caption="$24.8k"
+              caption={money(typeRevenue / 100, { compact: true })}
               captionLabel="revenue"
             />
             <DonutLegend slices={revenueByType} />
@@ -188,19 +233,44 @@ export default function CustomersPage() {
 
       <FilterBar
         placeholder="Search customer name or phone…"
-        selects={["Type", "Status", "Balance", "Last purchase"]}
+        filters={[
+          {
+            name: "type",
+            label: "Type",
+            options: [
+              { value: "wholesaler", label: "Wholesaler" },
+              { value: "retailer", label: "Retailer" },
+              { value: "restaurant", label: "Restaurant / hotel" },
+              { value: "walk_in", label: "Walk-in" },
+            ],
+          },
+          {
+            name: "status",
+            label: "Status",
+            options: [
+              { value: "active", label: "Active" },
+              { value: "dormant", label: "Dormant" },
+              { value: "overdue", label: "Payment overdue" },
+            ],
+          },
+        ]}
       />
 
       <Card className="flex flex-col">
         <PanelHead inset title="All Customers" />
         <DataTable
           columns={columns}
-          rows={customers}
-          rowKey={(row) => row.name}
+          rows={customers.rows}
+          rowKey={(row) => String(row.id)}
         />
-        <TableFooter summary="Showing 6 of 64 customers">
-          <GhostButton>Previous</GhostButton>
-          <GhostButton>Next</GhostButton>
+        <TableFooter
+          summary={`Showing ${customers.range} of ${kpis.total} customers`}
+        >
+          <Pager
+            page={customers.page}
+            hasNext={customers.hasNext}
+            hasPrevious={customers.hasPrevious}
+          />
         </TableFooter>
       </Card>
     </>

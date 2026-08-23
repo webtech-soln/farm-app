@@ -19,7 +19,7 @@ export function MobileBottomNav() {
 
       <div className="flex flex-1 justify-center">
         <Link
-          href="/quick-entry"
+          href="/records/daily"
           aria-label="Record"
           className="flex size-11 items-center justify-center rounded-full bg-violet shadow-[0_4px_12px_rgba(124,58,237,0.35)]"
         >

@@ -7,17 +7,20 @@ import {
   HeartPulse,
   History,
   Package,
-  Play,
-  Plus,
   ShoppingBag,
   Stethoscope,
   Wheat,
   type LucideIcon,
 } from "lucide-react";
 
+import {
+  DeleteReportDialog,
+  ReportRequestDialog,
+} from "@/components/dialogs/report-dialogs";
 import { PageHeader } from "@/components/layout/page-header";
+import { pageWindow, paginate, param } from "@/lib/pagination";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { ButtonLink } from "@/components/ui/button";
 import { Card, PanelHead } from "@/components/ui/card";
 import {
   CellStack,
@@ -26,13 +29,14 @@ import {
   TableFooter,
   type Column,
 } from "@/components/ui/data-table";
-import { GhostButton } from "@/components/ui/ghost-button";
+import { Pager } from "@/components/ui/pager";
 import { IconChip } from "@/components/ui/icon-chip";
 import {
-  generatedReports,
-  reportCards,
+  getGeneratedReports,
+  getReportCards,
+  getReportKpis,
   reportFormats,
-  type GeneratedReport,
+  type GeneratedReportRow,
   type ReportIcon,
 } from "@/lib/data/reports";
 
@@ -48,7 +52,7 @@ const reportIcons: Record<ReportIcon, LucideIcon> = {
   banknote: Banknote,
 };
 
-const columns: Column<GeneratedReport>[] = [
+const columns: Column<GeneratedReportRow>[] = [
   {
     header: "REPORT",
     cell: (row) => <CellStack primary={row.name} secondary={row.origin} />,
@@ -86,9 +90,33 @@ const columns: Column<GeneratedReport>[] = [
     width: 110,
     cell: (row) => <Badge tone={row.statusTone}>{row.status}</Badge>,
   },
+  {
+    header: "",
+    width: 48,
+    align: "right",
+    cell: (row) => (
+      <div className="flex items-center justify-end">
+        <DeleteReportDialog id={row.id} name={row.name} />
+      </div>
+    ),
+  },
 ];
 
-export default function ReportsPage() {
+export default async function ReportsPage({
+  searchParams,
+}: PageProps<"/reports">) {
+  const params = await searchParams;
+  const window = pageWindow(params);
+  const origin = param(params, "origin");
+
+  const [kpis, reportCards, rows] = await Promise.all([
+    getReportKpis(),
+    getReportCards(),
+    getGeneratedReports(window.limit, window.offset, origin),
+  ]);
+
+  const generatedReports = paginate(rows, window);
+
   return (
     <>
       <PageHeader
@@ -96,15 +124,19 @@ export default function ReportsPage() {
         breadcrumb={["Reports"]}
         subtitle="Generate, schedule and export operational and financial reports."
       >
-        <Button variant="secondary" icon={Clock3}>
-          Scheduled reports
-        </Button>
-        <Button icon={Plus}>Custom Report</Button>
+        <ButtonLink
+          href={origin === "scheduled" ? "/reports" : "/reports?origin=scheduled"}
+          variant="secondary"
+          icon={Clock3}
+        >
+          {origin === "scheduled" ? "All reports" : "Scheduled reports"}
+        </ButtonLink>
+        <ReportRequestDialog reports={reportCards} />
       </PageHeader>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {reportCards.map((report) => (
-          <Card key={report.name} className="flex flex-col gap-3 p-4">
+          <Card key={report.key} className="flex flex-col gap-3 p-4">
             <div className="flex items-center gap-2.5">
               <IconChip icon={reportIcons[report.icon]} size={36} />
               <h2 className="min-w-0 flex-1 truncate text-md font-semibold text-ink">
@@ -124,22 +156,21 @@ export default function ReportsPage() {
             </div>
 
             <div className="flex flex-wrap items-center gap-2 border-t border-border-soft pt-3">
-              <button
-                type="button"
-                className="flex items-center gap-1.5 rounded-nav bg-violet px-3 py-[7px] text-sm font-semibold text-white hover:bg-violet-deep"
-              >
-                <Play className="size-3.5" />
-                Generate
-              </button>
+              <ReportRequestDialog
+                reportKey={report.key}
+                name={report.name}
+                label="Generate"
+              />
               <span className="flex-1" />
               {reportFormats.map((format) => (
-                <button
+                <ReportRequestDialog
                   key={format}
-                  type="button"
-                  className="rounded-[6px] border border-border-hair px-2 py-1 text-2xs font-semibold text-ink-2 hover:bg-border-soft"
-                >
-                  {format}
-                </button>
+                  reportKey={report.key}
+                  name={report.name}
+                  label={format}
+                  format={format.toLowerCase()}
+                  variant="chip"
+                />
               ))}
             </div>
           </Card>
@@ -150,12 +181,17 @@ export default function ReportsPage() {
         <PanelHead inset title="Recently Generated" />
         <DataTable
           columns={columns}
-          rows={generatedReports}
-          rowKey={(row) => row.name + row.when}
+          rows={generatedReports.rows}
+          rowKey={(row) => String(row.id)}
         />
-        <TableFooter summary="Showing 5 of 64 generated reports">
-          <GhostButton>Previous</GhostButton>
-          <GhostButton>Next</GhostButton>
+        <TableFooter
+          summary={`Showing ${generatedReports.range} of ${kpis.total} generated reports`}
+        >
+          <Pager
+            page={generatedReports.page}
+            hasNext={generatedReports.hasNext}
+            hasPrevious={generatedReports.hasPrevious}
+          />
         </TableFooter>
       </Card>
     </>

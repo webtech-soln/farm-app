@@ -1,9 +1,6 @@
 import {
-  Calendar,
   CalendarClock,
-  ChevronDown,
   CircleCheckBig,
-  Plus,
   Printer,
   ShieldCheck,
   TrendingUp,
@@ -22,15 +19,27 @@ import {
   TableFooter,
   type Column,
 } from "@/components/ui/data-table";
-import { GhostButton } from "@/components/ui/ghost-button";
+import { MonthNav } from "@/components/ui/month-nav";
+import { Pager } from "@/components/ui/pager";
 import { KpiCard, KpiGrid } from "@/components/ui/kpi-card";
 import {
-  vaccinationCalendar,
-  vaccinations,
-  type Vaccination,
+  getVaccinationCalendar,
+  getVaccinationKpis,
+  getVaccinations,
+  type VaccinationRow,
 } from "@/lib/data/vaccinations";
+import {
+  CancelVaccinationDialog,
+  CompleteVaccinationDialog,
+  VaccinationDialog,
+} from "@/components/dialogs/health-dialogs";
+import { getAssigneeOptions } from "@/lib/data/employees";
+import { getFlockOptions } from "@/lib/data/flocks";
+import { getHouseOptions } from "@/lib/data/houses";
+import { pageWindow, paginate, param } from "@/lib/pagination";
+import { count } from "@/lib/format";
 
-const columns: Column<Vaccination>[] = [
+const columns: Column<VaccinationRow>[] = [
   {
     header: "VACCINE",
     cell: (row) => <CellStack primary={row.vaccine} secondary={row.route} />,
@@ -69,9 +78,57 @@ const columns: Column<Vaccination>[] = [
     width: 130,
     cell: (row) => <Badge tone={row.statusTone}>{row.status}</Badge>,
   },
+  {
+    header: "",
+    width: 72,
+    align: "right",
+    cell: (row) => (
+      <div className="flex items-center justify-end">
+        {row.statusKey === "completed" || row.statusKey === "cancelled" ? null : (
+          <>
+            <CompleteVaccinationDialog
+              id={row.id}
+              vaccine={row.vaccine}
+              doses={row.doseCount}
+            />
+            <CancelVaccinationDialog id={row.id} vaccine={row.vaccine} />
+          </>
+        )}
+      </div>
+    ),
+  },
 ];
 
-export default function VaccinationsPage() {
+export default async function VaccinationsPage({
+  searchParams,
+}: PageProps<"/vaccinations">) {
+  const params = await searchParams;
+  const window = pageWindow(params);
+  // `?month=YYYY-MM` moves the calendar; without it the current month shows.
+  const monthParam = param(params, "month");
+  const reference = monthParam
+    ? new Date(Number(monthParam.slice(0, 4)), Number(monthParam.slice(5, 7)) - 1, 1)
+    : new Date();
+  const month = `${reference.getFullYear()}-${String(reference.getMonth() + 1).padStart(2, "0")}`;
+  const filters = {
+    search: param(params, "q"),
+    flock: param(params, "flock"),
+    house: param(params, "house"),
+    status: param(params, "status"),
+  };
+
+  const [kpis, calendar, rows, flocks, houses, people] =
+    await Promise.all([
+      getVaccinationKpis(),
+      getVaccinationCalendar(reference),
+      getVaccinations(filters, window.limit, window.offset),
+      getFlockOptions({ activeOnly: true }),
+      getHouseOptions(),
+      getAssigneeOptions(),
+    ]);
+
+  const vaccinations = paginate(rows, window);
+
   return (
     <>
       <PageHeader
@@ -82,68 +139,76 @@ export default function VaccinationsPage() {
         <Button variant="secondary" icon={Printer}>
           Print schedule
         </Button>
-        <Button icon={Plus}>Schedule Vaccination</Button>
+        <VaccinationDialog flocks={flocks} houses={houses} people={people} />
       </PageHeader>
 
       <KpiGrid>
         <KpiCard
           label="Due This Week"
           icon={CalendarClock}
-          iconTone="warning"
-          value="2"
-          delta="Soon"
-          deltaIcon={TriangleAlert}
-          deltaTone="warning"
-          note="1 tomorrow"
+          iconTone={kpis.upcoming ? "warning" : undefined}
+          value={count(kpis.upcoming)}
+          delta={kpis.upcoming ? "Soon" : "Clear"}
+          deltaIcon={kpis.upcoming ? TriangleAlert : CircleCheckBig}
+          deltaTone={kpis.upcoming ? "warning" : "success"}
+          note={`${kpis.tomorrow} tomorrow`}
         />
         <KpiCard
           label="Completed (month)"
           icon={CircleCheckBig}
-          value="14"
-          delta="+3"
+          value={count(kpis.completedThisMonth)}
+          delta={
+            kpis.completedChange >= 0
+              ? `+${kpis.completedChange}`
+              : String(kpis.completedChange)
+          }
           deltaIcon={TrendingUp}
-          deltaTone="success"
-          note="100% on schedule"
+          deltaTone={kpis.completedChange >= 0 ? "success" : "warning"}
+          note="vs last month"
         />
         <KpiCard
           label="Overdue"
           icon={TriangleAlert}
-          iconTone="error"
-          value="1"
-          delta="Urgent"
-          deltaIcon={TriangleAlert}
-          deltaTone="error"
-          note="JF-2026-007"
+          iconTone={kpis.overdue ? "error" : undefined}
+          value={count(kpis.overdue)}
+          delta={kpis.overdue ? "Urgent" : "None"}
+          deltaIcon={kpis.overdue ? TriangleAlert : CircleCheckBig}
+          deltaTone={kpis.overdue ? "error" : "success"}
+          note={kpis.overdueFlock ?? "all flocks on schedule"}
         />
         <KpiCard
           label="Coverage"
           icon={ShieldCheck}
-          value="96.4%"
-          delta="+1.2pp"
+          value={kpis.coverageLabel}
+          delta={kpis.coverage >= 95 ? "On target" : "Below target"}
           deltaIcon={TrendingUp}
-          deltaTone="success"
-          note="of scheduled doses"
+          deltaTone={kpis.coverage >= 95 ? "success" : "warning"}
+          note="of doses due"
         />
       </KpiGrid>
 
       <Card className="flex flex-col gap-4 p-4">
-        <PanelHead title="August 2026">
-          <GhostButton icon={ChevronDown}>Month</GhostButton>
-          <GhostButton icon={Calendar}>Today</GhostButton>
+        <PanelHead title={calendar.label}>
+          <MonthNav month={month} />
         </PanelHead>
-        <CalendarMonth days={vaccinationCalendar} />
+        <CalendarMonth days={calendar.days} />
       </Card>
 
       <Card className="flex flex-col">
         <PanelHead inset title="Vaccination Records" />
         <DataTable
           columns={columns}
-          rows={vaccinations}
-          rowKey={(row) => row.vaccine + row.flock}
+          rows={vaccinations.rows}
+          rowKey={(row) => String(row.id)}
         />
-        <TableFooter summary="Showing 6 of 48 records">
-          <GhostButton>Previous</GhostButton>
-          <GhostButton>Next</GhostButton>
+        <TableFooter
+          summary={`Showing ${vaccinations.range} of ${kpis.total} records`}
+        >
+          <Pager
+            page={vaccinations.page}
+            hasNext={vaccinations.hasNext}
+            hasPrevious={vaccinations.hasPrevious}
+          />
         </TableFooter>
       </Card>
     </>

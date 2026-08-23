@@ -1,59 +1,59 @@
 import { notFound } from "next/navigation";
 import {
   Bird,
-  ChevronDown,
-  Download,
   Droplets,
   HeartPulse,
   Layers,
   LayoutGrid,
-  Pencil,
   Plus,
   Thermometer,
 } from "lucide-react";
 
 import { BarChart, ChartLegend, chartColors } from "@/components/charts/bar-chart";
+import { HouseFormDialog } from "@/components/dialogs/house-dialogs";
 import { PageHeader } from "@/components/layout/page-header";
-import { Button } from "@/components/ui/button";
+import { ExportButton } from "@/components/ui/export-button";
+import { ButtonLink } from "@/components/ui/button";
 import { Card, PanelHead } from "@/components/ui/card";
-import { GhostButton } from "@/components/ui/ghost-button";
 import { MetricStrip } from "@/components/ui/metric-strip";
 import { Tabs } from "@/components/ui/tabs";
 import { Timeline } from "@/components/ui/timeline";
 import {
-  birdCountTrend,
-  feedConsumption,
-  houseActivity,
-  temperatureDay,
+  getHouseActivity,
+  getHouseBirdCountTrend,
+  getHouseFeedConsumption,
+  getHouseTemperatureDay,
 } from "@/lib/data/house-detail";
-import { houses } from "@/lib/data/houses";
-
-export function generateStaticParams() {
-  return houses.map((house) => ({ houseId: house.id }));
-}
+import { getHouses } from "@/lib/data/houses";
 
 export default async function HouseDetailPage({
   params,
 }: PageProps<"/houses/[houseId]">) {
   const { houseId } = await params;
-  const house = houses.find((entry) => entry.id === houseId);
+  const house = (await getHouses()).find((entry) => entry.id === houseId);
 
   if (!house) notFound();
+
+  const [temperatureDay, birdCountTrend, feedConsumption, houseActivity] =
+    await Promise.all([
+      getHouseTemperatureDay(house.dbId),
+      getHouseBirdCountTrend(house.dbId),
+      getHouseFeedConsumption(house.dbId),
+      getHouseActivity(house.dbId),
+    ]);
 
   return (
     <>
       <PageHeader
         title={house.name}
         breadcrumb={["Farm", "Houses", house.name]}
-        subtitle={`${house.flock.includes("Layer") ? "Layer" : "Broiler"} house · ${house.capacity.toLocaleString("en-US")} bird capacity · commissioned Jan 2024`}
+        subtitle={`${house.flock.includes("Layer") ? "Layer" : "Broiler"} house · ${house.capacity.toLocaleString("en-US")} bird capacity`}
       >
-        <Button variant="secondary" icon={Pencil}>
-          Edit House
-        </Button>
-        <Button variant="secondary" icon={Download}>
-          Export
-        </Button>
-        <Button icon={Plus}>Add Record</Button>
+        <HouseFormDialog house={house} labelled />
+        <ExportButton board="houses" />
+        <ButtonLink href={`/records/daily?house=${house.id}`} icon={Plus}>
+          Add Record
+        </ButtonLink>
       </PageHeader>
 
       <MetricStrip
@@ -82,24 +82,21 @@ export default async function HouseDetailPage({
           },
           {
             label: "Mortality",
-            value: "1.2%",
+            value: house.mortality,
             icon: HeartPulse,
             valueTone: "success",
           },
         ]}
       />
 
-      <Tabs
-        tabs={["Overview", "Flock", "Production", "Feed", "Health", "History"]}
-      />
+      <Tabs tabs={["Environment", "Birds", "Feed", "Activity"]} />
 
       <div className="flex flex-col gap-4 xl:flex-row">
-        <Card className="flex flex-1 flex-col gap-4 p-4">
+        <Card className="flex flex-1 flex-col gap-4 p-4" id="environment">
           <PanelHead
             title="Temperature · last 24 hours"
-            subtitle="Optimal band 24–30°C · 2 excursions recorded"
+            subtitle={`Optimal band ${temperatureDay.band} · ${temperatureDay.excursions} excursions recorded`}
           >
-            <GhostButton icon={ChevronDown}>Last 24h</GhostButton>
           </PanelHead>
           <ChartLegend
             series={[
@@ -124,10 +121,10 @@ export default async function HouseDetailPage({
           />
         </Card>
 
-        <Card className="flex flex-col gap-4 p-4 xl:w-[470px]">
+        <Card className="flex flex-col gap-4 p-4 xl:w-[470px]" id="birds">
           <PanelHead
             title="Bird Count Trend"
-            subtitle="Last 6 weeks · natural depletion"
+            subtitle={`Last ${birdCountTrend.days} days · natural depletion`}
           />
           <BarChart
             labels={birdCountTrend.labels}
@@ -148,7 +145,7 @@ export default async function HouseDetailPage({
       </div>
 
       <div className="flex flex-col gap-4 xl:flex-row">
-        <Card className="flex flex-1 flex-col gap-4 p-4">
+        <Card className="flex flex-1 flex-col gap-4 p-4" id="feed">
           <PanelHead
             title="Feed Consumption"
             subtitle="Daily intake vs standard curve · kg"
@@ -180,9 +177,14 @@ export default async function HouseDetailPage({
           />
         </Card>
 
-        <Card className="flex flex-col gap-4 p-4 xl:w-[470px]">
+        <Card className="flex flex-col gap-4 p-4 xl:w-[470px]" id="activity">
           <PanelHead title="Recent Activity">
-            <GhostButton>View all</GhostButton>
+            <ButtonLink
+              href={`/records/daily?house=${house.code}`}
+              variant="ghost"
+            >
+              View all
+            </ButtonLink>
           </PanelHead>
           <Timeline events={houseActivity} />
         </Card>

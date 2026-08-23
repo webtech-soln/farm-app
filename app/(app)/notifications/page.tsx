@@ -1,3 +1,4 @@
+import Link from "next/link";
 import {
   CalendarX,
   CheckCheck,
@@ -6,24 +7,30 @@ import {
   Link2,
   PackageOpen,
   Receipt,
-  Settings,
   Syringe,
   TriangleAlert,
   type LucideIcon,
 } from "lucide-react";
 
 import { PageHeader } from "@/components/layout/page-header";
-import { Button } from "@/components/ui/button";
+import { Button, ButtonLink } from "@/components/ui/button";
 import { Card, PanelHead } from "@/components/ui/card";
 import { IconChip } from "@/components/ui/icon-chip";
 import { SegmentedControl } from "@/components/ui/tabs";
-import { Toggle } from "@/components/ui/toggle";
 import { toneSolid } from "@/components/ui/tone";
+import { PreferenceToggle } from "@/components/form/preference-toggle";
 import {
-  deliveryPreferences,
-  notificationCounts,
-  notifications,
-  prioritySummary,
+  markAllNotificationsRead,
+  markNotificationRead,
+} from "@/lib/actions/notifications";
+import { saveNotificationPreference } from "@/lib/actions/settings";
+import { requireUser } from "@/lib/auth/session";
+import { param } from "@/lib/pagination";
+import {
+  getDeliveryPreferences,
+  getNotificationCounts,
+  getNotifications,
+  getPrioritySummary,
   type NotificationIcon,
 } from "@/lib/data/notifications";
 
@@ -38,7 +45,21 @@ const notificationIcons: Record<NotificationIcon, LucideIcon> = {
   check: CircleCheckBig,
 };
 
-export default function NotificationsPage() {
+export default async function NotificationsPage({
+  searchParams,
+}: PageProps<"/notifications">) {
+  const user = await requireUser();
+  const params = await searchParams;
+  const category = param(params, "category");
+
+  const [notifications, notificationCounts, deliveryPreferences, prioritySummary] =
+    await Promise.all([
+      getNotifications(user.id, category),
+      getNotificationCounts(user.id),
+      getDeliveryPreferences(user.id),
+      getPrioritySummary(user.id),
+    ]);
+
   return (
     <>
       <PageHeader
@@ -46,31 +67,47 @@ export default function NotificationsPage() {
         breadcrumb={["Notifications"]}
         subtitle="Everything that needs your attention, grouped by area."
       >
-        <Button variant="secondary" icon={CheckCheck}>
-          Mark all as read
-        </Button>
-        <Button variant="secondary" icon={Settings}>
+        <form action={markAllNotificationsRead}>
+          <Button type="submit" variant="secondary" icon={CheckCheck}>
+            Mark all as read
+          </Button>
+        </form>
+        <ButtonLink href="/settings" variant="secondary">
           Settings
-        </Button>
+        </ButtonLink>
       </PageHeader>
 
       <SegmentedControl
         options={Object.keys(notificationCounts)}
         counts={notificationCounts}
+        name="category"
+        defaultOption="All"
       />
 
       <div className="flex flex-col gap-4 xl:flex-row">
         <Card className="flex min-w-0 flex-1 flex-col">
           {notifications.map((notification) => (
             <article
-              key={notification.title}
+              key={notification.id}
               className="flex items-start gap-3 border-b border-border-soft p-4 last:border-b-0 hover:bg-bg"
             >
-              <span
-                className={`mt-3 size-2 shrink-0 rounded-full ${
-                  notification.unread ? "bg-violet" : "bg-transparent"
-                }`}
-              />
+              {notification.unread && !notification.broadcast ? (
+                <form action={markNotificationRead} className="mt-3 shrink-0">
+                  <input type="hidden" name="id" value={notification.id} />
+                  <button
+                    type="submit"
+                    title="Mark as read"
+                    aria-label={`Mark "${notification.title}" as read`}
+                    className="block size-2 rounded-full bg-violet"
+                  />
+                </form>
+              ) : (
+                <span
+                  className={`mt-3 size-2 shrink-0 rounded-full ${
+                    notification.unread ? "bg-violet" : "bg-transparent"
+                  }`}
+                />
+              )}
               <IconChip
                 icon={notificationIcons[notification.icon]}
                 tone={notification.tone}
@@ -103,12 +140,18 @@ export default function NotificationsPage() {
                 </div>
               </div>
 
-              <button
-                type="button"
-                className="shrink-0 rounded-[7px] border border-border-hair px-2.5 py-1.5 text-sm font-semibold text-violet-deep hover:bg-violet-50"
-              >
-                {notification.action}
-              </button>
+              {notification.href ? (
+                <Link
+                  href={notification.href}
+                  className="shrink-0 rounded-[7px] border border-border-hair px-2.5 py-1.5 text-sm font-semibold text-violet-deep hover:bg-violet-50"
+                >
+                  {notification.action}
+                </Link>
+              ) : (
+                <span className="shrink-0 rounded-[7px] border border-border-hair px-2.5 py-1.5 text-sm font-semibold text-ink-3">
+                  {notification.action}
+                </span>
+              )}
             </article>
           ))}
         </Card>
@@ -133,9 +176,11 @@ export default function NotificationsPage() {
                       {preference.scope}
                     </span>
                   </div>
-                  <Toggle
-                    label={`${preference.channel} notifications`}
-                    defaultOn={preference.enabled}
+                  <PreferenceToggle
+                    action={saveNotificationPreference}
+                    channel={preference.channel}
+                    scope={preference.scope}
+                    enabled={preference.enabled}
                   />
                 </li>
               ))}

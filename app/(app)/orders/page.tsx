@@ -1,18 +1,24 @@
 import {
   Banknote,
   CircleCheckBig,
-  Download,
   PackageCheck,
-  Plus,
   Receipt,
   Truck,
   type LucideIcon,
 } from "lucide-react";
 
+import {
+  OrderDialog,
+  OrderStatusDialog,
+  PaymentDialog,
+} from "@/components/dialogs/sales-dialogs";
 import { PageHeader } from "@/components/layout/page-header";
+import { ExportButton } from "@/components/ui/export-button";
+import { getCustomerOptions } from "@/lib/data/customers";
+import { getProductOptions } from "@/lib/data/products";
+import { pageWindow, paginate, param } from "@/lib/pagination";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card, PanelHead } from "@/components/ui/card";
 import {
   CellStack,
@@ -22,23 +28,19 @@ import {
   type Column,
 } from "@/components/ui/data-table";
 import { FilterBar } from "@/components/ui/filter-bar";
-import { GhostButton } from "@/components/ui/ghost-button";
+import { Pager } from "@/components/ui/pager";
 import { SegmentedControl } from "@/components/ui/tabs";
 import { Timeline } from "@/components/ui/timeline";
 import type { Tone } from "@/components/ui/tone";
 import {
-  orderDetail,
-  orderStatusCounts,
-  orderTimeline,
-  orders,
-  type Order,
-  type OrderEvent,
+  getOrderDetail,
+  getOrderStatusCounts,
+  getOrders,
+  type OrderEventIcon,
+  type OrderRow,
 } from "@/lib/data/orders";
 
-const eventStyles: Record<
-  OrderEvent["icon"],
-  { icon: LucideIcon; tone: Tone }
-> = {
+const eventStyles: Record<OrderEventIcon, { icon: LucideIcon; tone: Tone }> = {
   delivered: { icon: CircleCheckBig, tone: "success" },
   transit: { icon: Truck, tone: "info" },
   packed: { icon: PackageCheck, tone: "violet" },
@@ -46,55 +48,99 @@ const eventStyles: Record<
   placed: { icon: Receipt, tone: "violet" },
 };
 
-const columns: Column<Order>[] = [
-  {
-    header: "ORDER #",
-    width: 130,
-    cell: (row) => (
-      <CellStack primary={row.reference} secondary={row.placedAt} />
-    ),
-  },
-  {
-    header: "CUSTOMER",
-    cell: (row) => <CellText>{row.customer}</CellText>,
-  },
-  {
-    header: "ITEMS",
-    width: 56,
-    cell: (row) => <CellText strong>{row.items}</CellText>,
-  },
-  {
-    header: "TOTAL",
-    width: 84,
-    cell: (row) => <CellText strong>{row.total}</CellText>,
-  },
-  {
-    header: "PAYMENT",
-    width: 92,
-    cell: (row) => (
-      <Badge tone={row.paymentTone} dot={row.paymentDot ?? true}>
-        {row.payment}
-      </Badge>
-    ),
-  },
-  {
-    header: "DELIVERY",
-    width: 88,
-    cell: (row) => <CellText>{row.delivery}</CellText>,
-    hideBelow: "lg",
-  },
-  {
-    header: "STATUS",
-    width: 104,
-    cell: (row) => (
-      <Badge tone={row.statusTone} dot={row.statusDot ?? true}>
-        {row.status}
-      </Badge>
-    ),
-  },
-];
+function buildColumns(): Column<OrderRow>[] {
+  return [
+    {
+      header: "ORDER #",
+      width: 130,
+      cell: (row) => (
+        <CellStack primary={row.reference} secondary={row.placedAt} />
+      ),
+    },
+    {
+      header: "CUSTOMER",
+      cell: (row) => <CellText>{row.customer}</CellText>,
+    },
+    {
+      header: "ITEMS",
+      width: 56,
+      cell: (row) => <CellText strong>{row.items}</CellText>,
+    },
+    {
+      header: "TOTAL",
+      width: 84,
+      cell: (row) => <CellText strong>{row.total}</CellText>,
+    },
+    {
+      header: "PAYMENT",
+      width: 92,
+      cell: (row) => (
+        <Badge tone={row.paymentTone} dot={row.paymentDot ?? true}>
+          {row.payment}
+        </Badge>
+      ),
+    },
+    {
+      header: "DELIVERY",
+      width: 88,
+      cell: (row) => <CellText>{row.delivery}</CellText>,
+      hideBelow: "lg",
+    },
+    {
+      header: "STATUS",
+      width: 104,
+      cell: (row) => (
+        <Badge tone={row.statusTone} dot={row.statusDot ?? true}>
+          {row.status}
+        </Badge>
+      ),
+    },
+    {
+      header: "",
+      width: 72,
+      align: "right",
+      cell: (row) => (
+        <div className="flex items-center justify-end">
+          <OrderStatusDialog
+            id={row.id}
+            reference={row.reference}
+            status={row.statusKey}
+          />
+          <PaymentDialog
+            orderId={row.id}
+            reference={row.reference}
+            variant="icon"
+          />
+        </div>
+      ),
+    },
+  ];
+}
 
-export default function OrdersPage() {
+export default async function OrdersPage({
+  searchParams,
+}: PageProps<"/orders">) {
+  const params = await searchParams;
+  const window = pageWindow(params);
+  const filters = {
+    search: param(params, "q"),
+    status: param(params, "status"),
+    paymentStatus: param(params, "payment"),
+    customer: param(params, "customer"),
+  };
+
+  const [statusCounts, rows, orderDetail, customers, products] =
+    await Promise.all([
+    getOrderStatusCounts(),
+    getOrders(filters, window.limit, window.offset),
+    getOrderDetail(),
+    getCustomerOptions(),
+    getProductOptions(),
+  ]);
+
+  const orders = paginate(rows, window);
+  const columns = buildColumns();
+
   return (
     <>
       <PageHeader
@@ -102,20 +148,38 @@ export default function OrdersPage() {
         breadcrumb={["Sales", "Orders"]}
         subtitle="Every order from placement to delivery."
       >
-        <Button variant="secondary" icon={Download}>
-          Export
-        </Button>
-        <Button icon={Plus}>Create Order</Button>
+        <ExportButton board="orders" />
+        <OrderDialog customers={customers} products={products} />
       </PageHeader>
 
       <SegmentedControl
-        options={Object.keys(orderStatusCounts)}
-        counts={orderStatusCounts}
+        options={Object.keys(statusCounts)}
+        counts={statusCounts}
+        name="status"
+        defaultOption="All"
       />
 
       <FilterBar
         placeholder="Search order number or customer…"
-        selects={["Payment", "Delivery", "Date range"]}
+        filters={[
+          {
+            name: "payment",
+            label: "Payment",
+            options: [
+              { value: "paid", label: "Paid" },
+              { value: "partial", label: "Partial" },
+              { value: "unpaid", label: "Unpaid" },
+            ],
+          },
+          {
+            name: "customer",
+            label: "Customer",
+            options: customers.map((customer) => ({
+              value: customer.name,
+              label: customer.name,
+            })),
+          },
+        ]}
       />
 
       <div className="flex flex-col gap-4 xl:flex-row">
@@ -123,15 +187,21 @@ export default function OrdersPage() {
           <PanelHead inset title="All Orders" />
           <DataTable
             columns={columns}
-            rows={orders}
-            rowKey={(row) => row.reference}
+            rows={orders.rows}
+            rowKey={(row) => String(row.id)}
           />
-          <TableFooter summary="Showing 7 of 162 orders">
-            <GhostButton>Previous</GhostButton>
-            <GhostButton>Next</GhostButton>
+          <TableFooter
+            summary={`Showing ${orders.range} of ${statusCounts.All} orders`}
+          >
+            <Pager
+              page={orders.page}
+              hasNext={orders.hasNext}
+              hasPrevious={orders.hasPrevious}
+            />
           </TableFooter>
         </Card>
 
+        {orderDetail ? (
         <Card className="flex flex-col gap-4 p-4 xl:w-[380px]">
           <PanelHead
             title={orderDetail.reference}
@@ -152,7 +222,7 @@ export default function OrdersPage() {
 
           <ul className="flex flex-col gap-4">
             {orderDetail.lines.map((line) => (
-              <li key={line.name} className="flex items-start gap-3">
+              <li key={line.id} className="flex items-start gap-3">
                 <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                   <span className="truncate text-sm-plus font-medium text-ink">
                     {line.name}
@@ -200,7 +270,7 @@ export default function OrdersPage() {
             Order timeline
           </h3>
           <Timeline
-            events={orderTimeline.map((event) => ({
+            events={orderDetail.timeline.map((event) => ({
               ...eventStyles[event.icon],
               title: event.title,
               time: event.time,
@@ -208,6 +278,7 @@ export default function OrdersPage() {
             }))}
           />
         </Card>
+        ) : null}
       </div>
     </>
   );

@@ -1,14 +1,15 @@
-import type { Tone } from "@/components/ui/tone";
+import "server-only";
 
-export const notificationCounts: Record<string, number> = {
-  All: 12,
-  Health: 3,
-  Inventory: 2,
-  Tasks: 3,
-  Finance: 2,
-  Sales: 1,
-  System: 1,
-};
+import { and, desc, eq, isNull, or, sql } from "drizzle-orm";
+
+import type { Tone } from "@/components/ui/tone";
+import { db } from "@/lib/db";
+import {
+  notificationPreferences,
+  notifications as table,
+} from "@/lib/db/schema";
+
+import { humanise, relativeTime } from "./common";
 
 export type NotificationIcon =
   | "alert"
@@ -20,7 +21,26 @@ export type NotificationIcon =
   | "receipt"
   | "check";
 
-export type Notification = {
+const ICONS: NotificationIcon[] = [
+  "alert",
+  "syringe",
+  "package-open",
+  "credit-card",
+  "task",
+  "calendar-x",
+  "receipt",
+  "check",
+];
+
+/** The stored icon is free text, so an unknown value falls back to the bell. */
+function iconFor(value: string): NotificationIcon {
+  return ICONS.includes(value as NotificationIcon)
+    ? (value as NotificationIcon)
+    : "alert";
+}
+
+export type NotificationRow = {
+  id: number;
   icon: NotificationIcon;
   tone: Tone;
   title: string;
@@ -28,103 +48,98 @@ export type Notification = {
   time: string;
   description: string;
   link: string;
+  href: string | null;
   action: string;
   unread?: boolean;
+  /** A broadcast cannot be marked read by one person on everyone's behalf. */
+  broadcast: boolean;
 };
 
-export const notifications: Notification[] = [
-  {
-    icon: "alert",
-    tone: "error",
-    title: "High mortality threshold breached",
-    category: "Health",
-    time: "12 min ago",
-    description:
-      "Flock JF-2026-003 in House 03 lost 9 birds in 24 hours, exceeding the 2% weekly threshold.",
-    link: "Flock JF-2026-003",
-    action: "Investigate",
-    unread: true,
-  },
-  {
-    icon: "syringe",
-    tone: "error",
-    title: "Vaccination overdue",
-    category: "Health",
-    time: "1 hr ago",
-    description:
-      "Fowl typhoid for Flock JF-2026-007 was scheduled for 05 Aug and has not been recorded.",
-    link: "Flock JF-2026-007",
-    action: "Schedule now",
-    unread: true,
-  },
-  {
-    icon: "package-open",
-    tone: "warning",
-    title: "Grower mash below minimum",
-    category: "Inventory",
-    time: "1 hr ago",
-    description:
-      "Stock is at 900 kg against a 1,000 kg minimum. Estimated 4 days of cover remaining.",
-    link: "Grower Mash",
-    action: "Reorder",
-    unread: true,
-  },
-  {
-    icon: "credit-card",
-    tone: "warning",
-    title: "Payment overdue",
-    category: "Finance",
-    time: "3 hrs ago",
-    description:
-      "Kola Poultry Traders has $3,420 outstanding, 18 days past terms.",
-    link: "#ORD-2838",
-    action: "Send reminder",
-    unread: true,
-  },
-  {
-    icon: "task",
-    tone: "violet",
-    title: "Task assigned to you",
-    category: "Tasks",
-    time: "4 hrs ago",
-    description:
-      'Amina Okoro assigned "Order layer feed" to you, due today at 14:00.',
-    link: "Task #T-1184",
-    action: "Open task",
-    unread: true,
-  },
-  {
-    icon: "calendar-x",
-    tone: "warning",
-    title: "Coccidiostat expiring in 10 days",
-    category: "Inventory",
-    time: "Yesterday",
-    description:
-      "Batch CCP-0288 expires 19 Aug 2026. Use or dispose before expiry.",
-    link: "Batch CCP-0288",
-    action: "View batch",
-  },
-  {
-    icon: "receipt",
-    tone: "success",
-    title: "New order received",
-    category: "Sales",
-    time: "Yesterday",
-    description: "Sunrise Supermarket placed order #ORD-2840 for $310.",
-    link: "#ORD-2840",
-    action: "View order",
-  },
-  {
-    icon: "check",
-    tone: "success",
-    title: "Daily records complete",
-    category: "System",
-    time: "Yesterday",
-    description: "All 6 houses submitted daily records before 09:00.",
-    link: "09 Aug 2026",
-    action: "View records",
-  },
-];
+/** The categories the segmented control lists, in board order. */
+const CATEGORIES = [
+  "health",
+  "inventory",
+  "tasks",
+  "finance",
+  "sales",
+  "system",
+] as const;
+
+/** Own notifications plus anything broadcast to the whole farm. */
+function visibleTo(userId: number) {
+  return or(eq(table.userId, userId), isNull(table.userId));
+}
+
+export async function getNotifications(
+  userId: number,
+  category?: string,
+  limit = 50,
+): Promise<NotificationRow[]> {
+  const conditions = [visibleTo(userId)];
+  if (category && category !== "All") {
+    conditions.push(sql`${table.category}::text = ${category.toLowerCase()}`);
+  }
+
+  const rows = await db
+    .select({
+      id: table.id,
+      userId: table.userId,
+      category: table.category,
+      tone: table.tone,
+      icon: table.icon,
+      title: table.title,
+      description: table.description,
+      linkLabel: table.linkLabel,
+      linkHref: table.linkHref,
+      actionLabel: table.actionLabel,
+      readAt: table.readAt,
+      createdAt: table.createdAt,
+    })
+    .from(table)
+    .where(and(...conditions))
+    .orderBy(desc(table.createdAt))
+    .limit(limit);
+
+  return rows.map((row) => ({
+    id: row.id,
+    icon: iconFor(row.icon),
+    tone: row.tone as Tone,
+    title: row.title,
+    category: humanise(row.category),
+    time: relativeTime(row.createdAt),
+    description: row.description,
+    link: row.linkLabel ?? "—",
+    href: row.linkHref,
+    action: row.actionLabel ?? "Open",
+    unread: row.readAt === null ? true : undefined,
+    broadcast: row.userId === null,
+  }));
+}
+
+/** Tab counts: unread per category, plus the "All" total. */
+export async function getNotificationCounts(
+  userId: number,
+): Promise<Record<string, number>> {
+  const rows = await db
+    .select({
+      category: table.category,
+      unread: sql<number>`count(*) filter (where ${table.readAt} is null)::int`,
+    })
+    .from(table)
+    .where(visibleTo(userId))
+    .groupBy(table.category);
+
+  const byCategory = new Map(rows.map((row) => [row.category, row.unread]));
+
+  const counts: Record<string, number> = {
+    All: rows.reduce((total, row) => total + row.unread, 0),
+  };
+  for (const category of CATEGORIES) {
+    counts[humanise(category)] = byCategory.get(category) ?? 0;
+  }
+
+  return counts;
+}
 
 export type DeliveryPreference = {
   channel: string;
@@ -132,15 +147,51 @@ export type DeliveryPreference = {
   enabled: boolean;
 };
 
-export const deliveryPreferences: DeliveryPreference[] = [
+/** Channels are fixed; a missing row means the channel has never been set up. */
+const DEFAULT_PREFERENCES: DeliveryPreference[] = [
   { channel: "In-app", scope: "All categories", enabled: true },
-  { channel: "Email", scope: "Health & Finance only", enabled: true },
-  { channel: "SMS", scope: "Critical alerts only", enabled: true },
-  { channel: "WhatsApp", scope: "Disabled", enabled: false },
+  { channel: "Email", scope: "Not configured", enabled: false },
+  { channel: "SMS", scope: "Not configured", enabled: false },
+  { channel: "WhatsApp", scope: "Not configured", enabled: false },
 ];
 
-export const prioritySummary: { label: string; count: string; tone: Tone }[] = [
-  { label: "Critical", count: "2", tone: "error" },
-  { label: "Warning", count: "4", tone: "warning" },
-  { label: "Informational", count: "6", tone: "info" },
-];
+export async function getDeliveryPreferences(
+  userId: number,
+): Promise<DeliveryPreference[]> {
+  const rows = await db
+    .select({
+      channel: notificationPreferences.channel,
+      scope: notificationPreferences.scope,
+      enabled: notificationPreferences.enabled,
+    })
+    .from(notificationPreferences)
+    .where(eq(notificationPreferences.userId, userId));
+
+  const byChannel = new Map(rows.map((row) => [row.channel, row]));
+
+  return DEFAULT_PREFERENCES.map(
+    (fallback) => byChannel.get(fallback.channel) ?? fallback,
+  );
+}
+
+/** Unresolved notifications grouped by how loud they are. */
+export async function getPrioritySummary(userId: number) {
+  const [row] = await db
+    .select({
+      critical: sql<number>`count(*) filter (where ${table.tone} = 'error')::int`,
+      warning: sql<number>`count(*) filter (where ${table.tone} = 'warning')::int`,
+      informational: sql<number>`count(*) filter (where ${table.tone} not in ('error','warning'))::int`,
+    })
+    .from(table)
+    .where(and(visibleTo(userId), isNull(table.readAt)));
+
+  return [
+    { label: "Critical", count: String(row.critical), tone: "error" as Tone },
+    { label: "Warning", count: String(row.warning), tone: "warning" as Tone },
+    {
+      label: "Informational",
+      count: String(row.informational),
+      tone: "info" as Tone,
+    },
+  ];
+}

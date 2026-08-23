@@ -2,8 +2,6 @@ import {
   CircleCheckBig,
   Clock,
   CreditCard,
-  Download,
-  Plus,
   ShoppingCart,
   TrendingUp,
   Truck,
@@ -12,8 +10,9 @@ import {
 import { BarChart, chartColors } from "@/components/charts/bar-chart";
 import { Donut, DonutLegend } from "@/components/charts/donut";
 import { PageHeader } from "@/components/layout/page-header";
+import { ExportButton } from "@/components/ui/export-button";
+import { paginateAll, param } from "@/lib/pagination";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card, PanelHead } from "@/components/ui/card";
 import {
   CellStack,
@@ -23,70 +22,117 @@ import {
   type Column,
 } from "@/components/ui/data-table";
 import { FilterBar } from "@/components/ui/filter-bar";
-import { GhostButton } from "@/components/ui/ghost-button";
+import { Pager } from "@/components/ui/pager";
 import { KpiCard, KpiGrid } from "@/components/ui/kpi-card";
 import { toneText } from "@/components/ui/tone";
 import {
-  paymentStatus,
-  spendBySupplier,
-  suppliers,
-  type Supplier,
+  getSpendBySupplier,
+  getSupplierKpis,
+  getSupplierPaymentStatus,
+  getSuppliers,
+  type SupplierRow,
+  getSupplierCategories,
+  getSupplierFormValues,
+  type SupplierFormValues,
 } from "@/lib/data/suppliers";
+import {
+  DeleteSupplierDialog,
+  SupplierDialog,
+} from "@/components/dialogs/inventory-dialogs";
+import { count, money, signedPercent } from "@/lib/format";
 
-const columns: Column<Supplier>[] = [
-  {
-    header: "SUPPLIER",
-    cell: (row) => <CellStack primary={row.name} secondary={row.location} />,
-  },
-  {
-    header: "CATEGORY",
-    width: 100,
-    cell: (row) => <CellText>{row.category}</CellText>,
-    hideBelow: "md",
-  },
-  {
-    header: "CONTACT",
-    width: 150,
-    cell: (row) => <CellText>{row.contact}</CellText>,
-    hideBelow: "lg",
-  },
-  {
-    header: "PRODUCTS",
-    width: 84,
-    align: "right",
-    cell: (row) => <CellText strong>{row.products}</CellText>,
-    hideBelow: "md",
-  },
-  {
-    header: "TOTAL PURCHASES",
-    width: 130,
-    align: "right",
-    cell: (row) => <CellText strong>{row.purchases}</CellText>,
-  },
-  {
-    header: "OUTSTANDING",
-    width: 108,
-    align: "right",
-    cell: (row) => (
-      <span
-        className={`text-sm-plus ${
-          row.outstandingTone
-            ? `font-semibold ${toneText[row.outstandingTone]}`
-            : "text-ink-2"
-        }`}
-      >
-        {row.outstanding}
-      </span>
-    ),
-  },
-  {
-    header: "STATUS",
-    width: 120,
-    cell: (row) => <Badge tone={row.statusTone}>{row.status}</Badge>,
-  },
-];
+function buildColumns(
+  formValues: Map<number, SupplierFormValues>,
+): Column<SupplierRow>[] {
+  return [
+    {
+      header: "SUPPLIER",
+      cell: (row) => <CellStack primary={row.name} secondary={row.location} />,
+    },
+    {
+      header: "CATEGORY",
+      width: 100,
+      cell: (row) => <CellText>{row.category}</CellText>,
+      hideBelow: "md",
+    },
+    {
+      header: "CONTACT",
+      width: 150,
+      cell: (row) => <CellText>{row.contact}</CellText>,
+      hideBelow: "lg",
+    },
+    {
+      header: "PRODUCTS",
+      width: 84,
+      align: "right",
+      cell: (row) => <CellText strong>{row.products}</CellText>,
+      hideBelow: "md",
+    },
+    {
+      header: "TOTAL PURCHASES",
+      width: 130,
+      align: "right",
+      cell: (row) => <CellText strong>{row.purchases}</CellText>,
+    },
+    {
+      header: "OUTSTANDING",
+      width: 108,
+      align: "right",
+      cell: (row) => (
+        <span
+          className={`text-sm-plus ${
+            row.outstandingTone
+              ? `font-semibold ${toneText[row.outstandingTone]}`
+              : "text-ink-2"
+          }`}
+        >
+          {row.outstanding}
+        </span>
+      ),
+    },
+    {
+      header: "STATUS",
+      width: 120,
+      cell: (row) => <Badge tone={row.statusTone}>{row.status}</Badge>,
+    },
+    {
+      header: "",
+      width: 72,
+      align: "right",
+      cell: (row) => (
+        <div className="flex items-center justify-end">
+          <SupplierDialog supplier={formValues.get(row.id)} />
+          <DeleteSupplierDialog id={row.id} name={row.name} />
+        </div>
+      ),
+    },
+  ];
+}
 
-export default function SuppliersPage() {
+export default async function SuppliersPage({
+  searchParams,
+}: PageProps<"/suppliers">) {
+  const params = await searchParams;
+  const filters = {
+    search: param(params, "q"),
+    category: param(params, "category"),
+    status: param(params, "status"),
+  };
+
+  const [kpis, spendBySupplier, paymentStatus, allSuppliers, formValues, categories] =
+    await Promise.all([
+      getSupplierKpis(),
+      getSpendBySupplier(),
+      getSupplierPaymentStatus(),
+      getSuppliers(filters),
+      getSupplierFormValues(),
+      getSupplierCategories(),
+    ]);
+
+  const suppliers = paginateAll(allSuppliers, params);
+
+  const columns = buildColumns(formValues);
+
   return (
     <>
       <PageHeader
@@ -94,48 +140,48 @@ export default function SuppliersPage() {
         breadcrumb={["Inventory", "Suppliers"]}
         subtitle="Purchase relationships, spend and outstanding balances."
       >
-        <Button variant="secondary" icon={Download}>
-          Export
-        </Button>
-        <Button icon={Plus}>Add Supplier</Button>
+        <ExportButton board="suppliers" />
+        <SupplierDialog />
       </PageHeader>
 
       <KpiGrid>
         <KpiCard
           label="Active Suppliers"
           icon={Truck}
-          value="12"
-          delta="+2"
-          deltaIcon={TrendingUp}
+          value={count(kpis.active)}
+          delta={`of ${kpis.total}`}
+          deltaIcon={Truck}
           deltaTone="neutral"
-          note="2 added this quarter"
+          note="currently trading"
         />
         <KpiCard
           label="Purchases (month)"
           icon={ShoppingCart}
-          value="$18,940"
-          delta="+6.2%"
+          value={kpis.purchasesLabel}
+          delta={signedPercent(kpis.purchasesChangePct)}
           deltaIcon={TrendingUp}
-          deltaTone="error"
+          deltaTone={kpis.purchasesChangePct > 0 ? "error" : "success"}
           note="vs last month"
         />
         <KpiCard
           label="Outstanding"
           icon={CreditCard}
-          value="$4,320"
-          delta="Due"
+          value={kpis.outstandingLabel}
+          delta={kpis.invoicesDue ? "Due" : "Settled"}
           deltaIcon={Clock}
-          deltaTone="warning"
-          note="3 invoices due"
+          deltaTone={kpis.overdueSuppliers ? "error" : kpis.invoicesDue ? "warning" : "success"}
+          note={`${kpis.invoicesDue} supplier${
+            kpis.invoicesDue === 1 ? "" : "s"
+          } with a balance`}
         />
         <KpiCard
-          label="On-time Delivery"
+          label="Stock Receipts"
           icon={CircleCheckBig}
-          value="94%"
-          delta="+2pp"
+          value={count(kpis.receipts)}
+          delta="Recorded"
           deltaIcon={TrendingUp}
           deltaTone="success"
-          note="last 90 days"
+          note="goods-in movements"
         />
       </KpiGrid>
 
@@ -143,7 +189,7 @@ export default function SuppliersPage() {
         <Card className="flex flex-1 flex-col gap-4 p-4">
           <PanelHead
             title="Spend by Supplier"
-            subtitle="Last 6 months · $ thousands"
+            subtitle="Last 12 months · $"
           />
           <BarChart
             labels={spendBySupplier.labels}
@@ -162,12 +208,15 @@ export default function SuppliersPage() {
         </Card>
 
         <Card className="flex flex-col gap-4 p-4 xl:w-[470px]">
-          <PanelHead title="Payment Status" subtitle="12 suppliers" />
+          <PanelHead
+            title="Payment Status"
+            subtitle={`${kpis.total} suppliers`}
+          />
           <div className="flex flex-wrap items-center gap-6">
             <Donut
               slices={paymentStatus}
               size={150}
-              caption="$4.3k"
+              caption={money(kpis.outstanding / 100, { compact: true })}
               captionLabel="outstanding"
             />
             <DonutLegend slices={paymentStatus} />
@@ -177,19 +226,42 @@ export default function SuppliersPage() {
 
       <FilterBar
         placeholder="Search supplier or product…"
-        selects={["Category", "Status", "Balance"]}
+        filters={[
+          {
+            name: "category",
+            label: "Category",
+            options: categories.map((category) => ({
+              value: category,
+              label: category,
+            })),
+          },
+          {
+            name: "status",
+            label: "Status",
+            options: [
+              { value: "active", label: "Active" },
+              { value: "inactive", label: "Inactive" },
+              { value: "overdue", label: "Payment overdue" },
+            ],
+          },
+        ]}
       />
 
       <Card className="flex flex-col">
         <PanelHead inset title="All Suppliers" />
         <DataTable
           columns={columns}
-          rows={suppliers}
-          rowKey={(row) => row.name}
+          rows={suppliers.rows}
+          rowKey={(row) => String(row.id)}
         />
-        <TableFooter summary="Showing 6 of 12 suppliers">
-          <GhostButton>Previous</GhostButton>
-          <GhostButton>Next</GhostButton>
+        <TableFooter
+          summary={`Showing ${suppliers.range} of ${kpis.total} suppliers`}
+        >
+          <Pager
+            page={suppliers.page}
+            hasNext={suppliers.hasNext}
+            hasPrevious={suppliers.hasPrevious}
+          />
         </TableFooter>
       </Card>
     </>

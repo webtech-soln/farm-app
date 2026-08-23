@@ -2,9 +2,7 @@ import {
   Calendar,
   CalendarDays,
   CalendarRange,
-  Download,
   HeartPulse,
-  Plus,
   TrendingDown,
   TrendingUp,
   TriangleAlert,
@@ -13,8 +11,8 @@ import {
 import { BarChart, ChartLegend, chartColors } from "@/components/charts/bar-chart";
 import { Donut, DonutLegend } from "@/components/charts/donut";
 import { PageHeader } from "@/components/layout/page-header";
+import { ExportButton } from "@/components/ui/export-button";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card, PanelHead } from "@/components/ui/card";
 import {
   CellStack,
@@ -23,17 +21,29 @@ import {
   TableFooter,
   type Column,
 } from "@/components/ui/data-table";
+import {
+  DeleteMortalityDialog,
+  MortalityFormDialog,
+  MortalityStatusDialog,
+} from "@/components/dialogs/record-dialogs";
 import { FilterBar } from "@/components/ui/filter-bar";
-import { GhostButton } from "@/components/ui/ghost-button";
+import { Pager } from "@/components/ui/pager";
 import { KpiCard, KpiGrid } from "@/components/ui/kpi-card";
 import {
-  mortalityByCause,
-  mortalityRecords,
-  mortalityTrend,
-  type MortalityRecord,
+  getMortalityByCause,
+  getMortalityKpis,
+  getMortalityRecords,
+  getMortalityTrend,
+  type MortalityRecordRow,
+  getMortalityCauses,
 } from "@/lib/data/mortality";
+import { getFlockOptions } from "@/lib/data/flocks";
+import { getHouseOptions } from "@/lib/data/houses";
+import { getFarmSettings } from "@/lib/data/settings";
+import { pageWindow, paginate, param } from "@/lib/pagination";
+import { count, percent, signedPercent } from "@/lib/format";
 
-const columns: Column<MortalityRecord>[] = [
+const columns: Column<MortalityRecordRow>[] = [
   {
     header: "DATE",
     width: 110,
@@ -74,9 +84,64 @@ const columns: Column<MortalityRecord>[] = [
     width: 136,
     cell: (row) => <Badge tone={row.statusTone}>{row.status}</Badge>,
   },
+  {
+    header: "",
+    width: 72,
+    align: "right",
+    cell: (row) => (
+      <div className="flex items-center justify-end">
+        <MortalityStatusDialog id={row.id} status={row.statusKey} />
+        <DeleteMortalityDialog id={row.id} />
+      </div>
+    ),
+  },
 ];
 
-export default function MortalityPage() {
+export default async function MortalityPage({
+  searchParams,
+}: PageProps<"/records/mortality">) {
+  const params = await searchParams;
+  const window = pageWindow(params);
+  const filters = {
+    search: param(params, "q"),
+    house: param(params, "house"),
+    flock: param(params, "flock"),
+    cause: param(params, "cause"),
+    status: param(params, "status"),
+  };
+
+  const [
+    kpis,
+    mortalityTrend,
+    mortalityByCause,
+    records,
+    settings,
+    flocks,
+    houses,
+    causes,
+  ] = await Promise.all([
+    getMortalityKpis(),
+    getMortalityTrend(),
+    getMortalityByCause(),
+    getMortalityRecords(filters, window.limit, window.offset),
+    getFarmSettings(),
+    getFlockOptions({ activeOnly: true }),
+    getHouseOptions(),
+    getMortalityCauses(),
+  ]);
+
+  const mortalityRecords = paginate(records, window);
+
+  const causeTotal = mortalityByCause.reduce(
+    (sum, slice) => sum + slice.value,
+    0,
+  );
+  const weekPct =
+    kpis.week - kpis.weekChange > 0
+      ? (kpis.weekChange / (kpis.week - kpis.weekChange)) * 100
+      : 0;
+  const nearLimit = kpis.weeklyRatePct >= settings.weeklyMortalityAlertPct;
+
   return (
     <>
       <PageHeader
@@ -84,49 +149,47 @@ export default function MortalityPage() {
         breadcrumb={["Operations", "Mortality"]}
         subtitle="Track losses by flock, house and cause across the farm."
       >
-        <Button variant="secondary" icon={Download}>
-          Export
-        </Button>
-        <Button icon={Plus}>Record Mortality</Button>
+        <ExportButton board="mortality" />
+        <MortalityFormDialog flocks={flocks} houses={houses} />
       </PageHeader>
 
       <KpiGrid>
         <KpiCard
           label="Today"
           icon={CalendarDays}
-          value="21 birds"
-          delta="↓ 19%"
-          deltaIcon={TrendingDown}
-          deltaTone="success"
-          note="vs 26 yesterday"
+          value={`${count(kpis.today)} birds`}
+          delta={kpis.openCases ? `${kpis.openCases} open` : "No open cases"}
+          deltaIcon={kpis.openCases ? TriangleAlert : TrendingDown}
+          deltaTone={kpis.openCases ? "warning" : "success"}
+          note="logged so far today"
         />
         <KpiCard
           label="This Week"
           icon={CalendarRange}
-          value="118 birds"
-          delta="+6.3%"
-          deltaIcon={TrendingUp}
-          deltaTone="error"
+          value={`${count(kpis.week)} birds`}
+          delta={signedPercent(weekPct)}
+          deltaIcon={kpis.weekChange > 0 ? TrendingUp : TrendingDown}
+          deltaTone={kpis.weekChange > 0 ? "error" : "success"}
           note="vs last week"
         />
         <KpiCard
           label="This Month"
           icon={Calendar}
-          value="486 birds"
-          delta="+2.1%"
-          deltaIcon={TrendingUp}
-          deltaTone="error"
-          note="vs last month"
+          value={`${count(kpis.month)} birds`}
+          delta="30 days"
+          deltaIcon={Calendar}
+          deltaTone="neutral"
+          note="rolling window"
         />
         <KpiCard
           label="Mortality Rate"
           icon={HeartPulse}
-          iconTone="warning"
-          value="1.8%"
-          delta="Near limit"
-          deltaIcon={TriangleAlert}
-          deltaTone="warning"
-          note="threshold 2.0%"
+          iconTone={nearLimit ? "warning" : undefined}
+          value={kpis.weeklyRateLabel}
+          delta={nearLimit ? "Near limit" : "Within limit"}
+          deltaIcon={nearLimit ? TriangleAlert : TrendingDown}
+          deltaTone={nearLimit ? "warning" : "success"}
+          note={`threshold ${percent(settings.weeklyMortalityAlertPct)}`}
         />
       </KpiGrid>
 
@@ -162,13 +225,13 @@ export default function MortalityPage() {
         <Card className="flex flex-col gap-4 p-4 xl:w-[470px]">
           <PanelHead
             title="Mortality by Cause"
-            subtitle="Last 30 days · 486 birds"
+            subtitle={`Last 30 days · ${count(causeTotal)} birds`}
           />
           <div className="flex flex-wrap items-center gap-6">
             <Donut
               slices={mortalityByCause}
               size={150}
-              caption="486"
+              caption={count(causeTotal)}
               captionLabel="birds"
             />
             <DonutLegend slices={mortalityByCause} />
@@ -178,7 +241,39 @@ export default function MortalityPage() {
 
       <FilterBar
         placeholder="Search by flock or cause…"
-        selects={["House", "Flock", "Cause", "Date range"]}
+        filters={[
+          {
+            name: "house",
+            label: "House",
+            options: houses.map((house) => ({
+              value: house.name,
+              label: house.name,
+            })),
+          },
+          {
+            name: "flock",
+            label: "Flock",
+            options: flocks.map((flock) => ({
+              value: flock.code,
+              label: flock.code,
+            })),
+          },
+          {
+            name: "cause",
+            label: "Cause",
+            options: causes.map((cause) => ({ value: cause, label: cause })),
+          },
+          {
+            name: "status",
+            label: "Status",
+            options: [
+              { value: "pending", label: "Pending review" },
+              { value: "reviewed", label: "Reviewed" },
+              { value: "under_treatment", label: "Under treatment" },
+              { value: "escalated", label: "Escalated" },
+            ],
+          },
+        ]}
       />
 
       <Card className="flex flex-col">
@@ -189,12 +284,15 @@ export default function MortalityPage() {
         />
         <DataTable
           columns={columns}
-          rows={mortalityRecords}
+          rows={mortalityRecords.rows}
           rowKey={(row, index) => `${row.flock}-${index}`}
         />
-        <TableFooter summary="Showing 6 of 128 records">
-          <GhostButton>Previous</GhostButton>
-          <GhostButton>Next</GhostButton>
+        <TableFooter summary={`Showing ${mortalityRecords.range} records`}>
+          <Pager
+            page={mortalityRecords.page}
+            hasNext={mortalityRecords.hasNext}
+            hasPrevious={mortalityRecords.hasPrevious}
+          />
         </TableFooter>
       </Card>
     </>

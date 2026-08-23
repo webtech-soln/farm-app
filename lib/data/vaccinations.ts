@@ -1,29 +1,114 @@
+import "server-only";
+
+import { and, asc, desc, eq, gte, lte, sql } from "drizzle-orm";
+
 import type { CalendarDay, CalendarEvent } from "@/components/ui/calendar-month";
 import type { Tone } from "@/components/ui/tone";
+import { db } from "@/lib/db";
+import { flocks, houses, users, vaccinations as table } from "@/lib/db/schema";
 
-/** August 2026 opens on a Saturday, so the grid starts on 27 July. */
-const augustEvents: Record<number, CalendarEvent[]> = {
-  4: [{ label: "Newcastle · JF-001", tone: "violet" }],
-  6: [{ label: "Gumboro · JF-006", tone: "violet" }],
-  10: [{ label: "Gumboro · JF-002", tone: "warning" }],
-  12: [{ label: "Fowl pox · JF-003", tone: "violet" }],
-  14: [{ label: "Deworming · all", tone: "violet" }],
-  18: [{ label: "Newcastle · JF-005", tone: "violet" }],
-  21: [{ label: "Bronchitis · JF-004", tone: "violet" }],
-  25: [{ label: "Newcastle booster", tone: "violet" }],
-  27: [{ label: "Fowl typhoid · JF-007", tone: "error" }],
+import {
+  count,
+  daysBetween,
+  display,
+  formatDate,
+  formatTime,
+  percent,
+  VACCINATION_STATUS,
+} from "./common";
+import { toIsoDate } from "@/lib/date";
+
+function isoDate(date: Date) {
+  return toIsoDate(date);
+}
+
+/**
+ * The grid always renders whole weeks starting on Monday, so it runs from the
+ * Monday on or before the 1st to the Sunday on or after the last day.
+ */
+function monthGridRange(year: number, month: number) {
+  const first = new Date(year, month, 1);
+  const last = new Date(year, month + 1, 0);
+
+  const start = new Date(first);
+  // getDay() is 0 for Sunday; the grid's first column is Monday.
+  start.setDate(first.getDate() - ((first.getDay() + 6) % 7));
+
+  const end = new Date(last);
+  end.setDate(last.getDate() + (7 - ((last.getDay() + 6) % 7) - 1));
+
+  return { first, last, start, end };
+}
+
+const CALENDAR_TONE: Record<string, Tone> = {
+  scheduled: "violet",
+  completed: "success",
+  overdue: "error",
+  cancelled: "neutral",
 };
 
-export const vaccinationCalendar: CalendarDay[] = [
-  ...[27, 28, 29, 30, 31].map((day) => ({ day, muted: true })),
-  ...Array.from({ length: 31 }, (_, index) => {
-    const day = index + 1;
-    return { day, today: day === 9, events: augustEvents[day] };
-  }),
-  ...[1, 2, 3, 4, 5, 6].map((day) => ({ day, muted: true })),
-];
+/** Vaccination schedule laid out as a month grid. */
+export async function getVaccinationCalendar(
+  reference = new Date(),
+): Promise<{ days: CalendarDay[]; label: string }> {
+  const year = reference.getFullYear();
+  const month = reference.getMonth();
+  const { first, last, start, end } = monthGridRange(year, month);
 
-export type Vaccination = {
+  const rows = await db
+    .select({
+      scheduledOn: table.scheduledOn,
+      vaccine: table.vaccine,
+      status: table.status,
+      flockCode: flocks.code,
+    })
+    .from(table)
+    .leftJoin(flocks, eq(flocks.id, table.flockId))
+    .where(
+      and(gte(table.scheduledOn, isoDate(start)), lte(table.scheduledOn, isoDate(end))),
+    )
+    .orderBy(asc(table.scheduledOn), asc(table.scheduledAt));
+
+  const byDay = new Map<string, CalendarEvent[]>();
+  for (const row of rows) {
+    // "Newcastle (Lasota)" → "Newcastle", "JF-2026-001" → "JF-001": the cells
+    // are only ~90px wide, so both halves are shortened.
+    const vaccine = row.vaccine.replace(/\s*\(.*\)$/, "");
+    const flock = row.flockCode
+      ? row.flockCode.replace(/^([A-Z]+)-\d{4}-(\d+)$/, "$1-$2")
+      : "all";
+    const events = byDay.get(row.scheduledOn) ?? [];
+    events.push({
+      label: `${vaccine} · ${flock}`,
+      tone: CALENDAR_TONE[row.status] ?? "violet",
+    });
+    byDay.set(row.scheduledOn, events);
+  }
+
+  const today = isoDate(new Date());
+  const days: CalendarDay[] = [];
+  for (
+    const cursor = new Date(start);
+    cursor <= end;
+    cursor.setDate(cursor.getDate() + 1)
+  ) {
+    const key = isoDate(cursor);
+    days.push({
+      day: cursor.getDate(),
+      muted: cursor < first || cursor > last,
+      today: key === today,
+      events: byDay.get(key),
+    });
+  }
+
+  return {
+    days,
+    label: first.toLocaleDateString("en-US", { month: "long", year: "numeric" }),
+  };
+}
+
+export type VaccinationRow = {
+  id: number;
   vaccine: string;
   route: string;
   flock: string;
@@ -34,79 +119,142 @@ export type Vaccination = {
   doses: string;
   status: string;
   statusTone: Tone;
+  /** Raw enum value and dose count, for the row actions. */
+  statusKey: string;
+  doseCount: number;
 };
 
-export const vaccinations: Vaccination[] = [
-  {
-    vaccine: "Gumboro (booster)",
-    route: "Drinking water",
-    flock: "JF-2026-002",
-    house: "House 02",
-    scheduled: "10 Aug 2026",
-    scheduleNote: "08:00",
-    administeredBy: "Dr. Chike Eze",
-    doses: "4,950",
-    status: "Due tomorrow",
-    statusTone: "warning",
-  },
-  {
-    vaccine: "Fowl typhoid",
-    route: "Subcutaneous",
-    flock: "JF-2026-007",
-    house: "House 03",
-    scheduled: "05 Aug 2026",
-    scheduleNote: "Overdue 4 days",
-    administeredBy: "Unassigned",
-    doses: "2,040",
-    status: "Overdue",
-    statusTone: "error",
-  },
-  {
-    vaccine: "Fowl pox",
-    route: "Wing web",
-    flock: "JF-2026-003",
-    house: "House 03",
-    scheduled: "12 Aug 2026",
-    scheduleNote: "09:00",
-    administeredBy: "Dr. Chike Eze",
-    doses: "4,600",
-    status: "Scheduled",
-    statusTone: "info",
-  },
-  {
-    vaccine: "Newcastle (Lasota)",
-    route: "Eye drop",
-    flock: "JF-2026-001",
-    house: "House 01",
-    scheduled: "04 Aug 2026",
-    scheduleNote: "Completed 08:20",
-    administeredBy: "Dr. Chike Eze",
-    doses: "4,830",
-    status: "Completed",
-    statusTone: "success",
-  },
-  {
-    vaccine: "Gumboro (primary)",
-    route: "Drinking water",
-    flock: "JF-2026-006",
-    house: "House 06",
-    scheduled: "06 Aug 2026",
-    scheduleNote: "Completed 07:50",
-    administeredBy: "Grace Amadi",
-    doses: "3,010",
-    status: "Completed",
-    statusTone: "success",
-  },
-  {
-    vaccine: "Deworming",
-    route: "Oral",
-    flock: "All flocks",
-    house: "All",
-    scheduled: "14 Aug 2026",
-    scheduleNote: "07:00",
-    administeredBy: "Amina Okoro",
-    doses: "24,850",
-    status: "Scheduled",
-    statusTone: "info",
-  },
-];
+export type VaccinationFilters = {
+  search?: string;
+  flock?: string;
+  house?: string;
+  status?: string;
+};
+
+export async function getVaccinations(
+  filters: VaccinationFilters = {},
+  limit = 50,
+  offset = 0,
+): Promise<VaccinationRow[]> {
+  const conditions = [];
+
+  if (filters.flock) conditions.push(eq(flocks.code, filters.flock));
+  if (filters.house) conditions.push(eq(houses.code, filters.house));
+  if (filters.status) {
+    conditions.push(sql`${table.status}::text = ${filters.status}`);
+  }
+  if (filters.search) {
+    const term = `%${filters.search.toLowerCase()}%`;
+    conditions.push(
+      sql`(lower(${table.vaccine}) like ${term} or lower(coalesce(${flocks.code}, '')) like ${term})`,
+    );
+  }
+
+  const rows = await db
+    .select({
+      id: table.id,
+      vaccine: table.vaccine,
+      route: table.route,
+      scheduledOn: table.scheduledOn,
+      scheduledAt: table.scheduledAt,
+      administeredAt: table.administeredAt,
+      doses: table.doses,
+      status: table.status,
+      flockCode: flocks.code,
+      houseName: houses.name,
+      administeredBy: users.name,
+    })
+    .from(table)
+    .leftJoin(flocks, eq(flocks.id, table.flockId))
+    .leftJoin(houses, eq(houses.id, table.houseId))
+    .leftJoin(users, eq(users.id, table.administeredById))
+    .where(conditions.length ? and(...conditions) : undefined)
+    .orderBy(desc(table.scheduledOn))
+    .limit(limit)
+    .offset(offset);
+
+  return rows.map((row) => {
+    const statusDisplay = display(VACCINATION_STATUS, row.status);
+    const dueIn = daysBetween(new Date(), row.scheduledOn);
+
+    /*
+     * The second line under the date carries whatever is most useful for the
+     * row's state: the time it was given, how late it is, or the slot it is
+     * booked into.
+     */
+    let scheduleNote: string;
+    let label = statusDisplay.label;
+    if (row.status === "completed") {
+      scheduleNote = row.administeredAt
+        ? `Completed ${formatTime(row.administeredAt)}`
+        : "Completed";
+    } else if (row.status === "overdue" || (row.status === "scheduled" && dueIn < 0)) {
+      const late = Math.abs(dueIn);
+      scheduleNote = `Overdue ${late} day${late === 1 ? "" : "s"}`;
+      label = "Overdue";
+    } else if (row.status === "cancelled") {
+      scheduleNote = "Cancelled";
+    } else {
+      scheduleNote = formatTime(row.scheduledAt) === "—" ? "Scheduled" : formatTime(row.scheduledAt);
+      if (dueIn === 0) label = "Due today";
+      if (dueIn === 1) label = "Due tomorrow";
+    }
+
+    return {
+      id: row.id,
+      vaccine: row.vaccine,
+      route: row.route,
+      flock: row.flockCode ?? "All flocks",
+      house: row.houseName ?? "All",
+      scheduled: formatDate(row.scheduledOn),
+      scheduleNote,
+      administeredBy: row.administeredBy ?? "Unassigned",
+      doses: count(row.doses),
+      doseCount: row.doses,
+      status: label,
+      statusKey: row.status,
+      statusTone:
+        label === "Due today" || label === "Due tomorrow"
+          ? "warning"
+          : statusDisplay.tone,
+    };
+  });
+}
+
+export async function getVaccinationKpis() {
+  const [row] = await db
+    .select({
+      upcoming: sql<number>`count(*) filter (where ${table.status} = 'scheduled' and ${table.scheduledOn} between current_date and current_date + 7)::int`,
+      tomorrow: sql<number>`count(*) filter (where ${table.status} = 'scheduled' and ${table.scheduledOn} = current_date + 1)::int`,
+      completedThisMonth: sql<number>`count(*) filter (where ${table.status} = 'completed' and ${table.scheduledOn} >= date_trunc('month', current_date))::int`,
+      completedLastMonth: sql<number>`count(*) filter (where ${table.status} = 'completed' and ${table.scheduledOn} >= date_trunc('month', current_date) - interval '1 month' and ${table.scheduledOn} < date_trunc('month', current_date))::int`,
+      overdue: sql<number>`count(*) filter (where ${table.status} = 'overdue')::int`,
+      dueDoses: sql<number>`coalesce(sum(${table.doses}) filter (where ${table.status} in ('completed','overdue')), 0)::int`,
+      givenDoses: sql<number>`coalesce(sum(${table.doses}) filter (where ${table.status} = 'completed'), 0)::int`,
+      total: sql<number>`count(*)::int`,
+    })
+    .from(table);
+
+  const [overdueFlock] = await db
+    .select({ code: flocks.code })
+    .from(table)
+    .innerJoin(flocks, eq(flocks.id, table.flockId))
+    .where(eq(table.status, "overdue"))
+    .orderBy(asc(table.scheduledOn))
+    .limit(1);
+
+  // Coverage is the share of doses that were due and actually administered.
+  const coverage = row.dueDoses > 0 ? (row.givenDoses / row.dueDoses) * 100 : 100;
+
+  return {
+    upcoming: row.upcoming,
+    tomorrow: row.tomorrow,
+    completedThisMonth: row.completedThisMonth,
+    completedChange: row.completedThisMonth - row.completedLastMonth,
+    overdue: row.overdue,
+    overdueFlock: overdueFlock?.code ?? null,
+    coverage,
+    coverageLabel: percent(coverage),
+    total: row.total,
+  };
+}

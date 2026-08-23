@@ -1,30 +1,29 @@
+import "server-only";
+
+import { and, desc, eq, gte, sql } from "drizzle-orm";
+
 import type { Tone } from "@/components/ui/tone";
+import { db } from "@/lib/db";
+import { flocks, houses, mortalityRecords, users } from "@/lib/db/schema";
 
-export const mortalityTrend = {
-  labels: [
-    "27", "28", "29", "30", "31", "01", "02",
-    "03", "04", "05", "06", "07", "08", "09",
-  ],
-  ticks: ["45", "30", "15", "0"],
-  max: 45,
-  values: [17, 20, 15, 23, 18, 21, 29, 36, 25, 22, 19, 24, 26, 21],
-  /** Amber above the 15/day per-flock threshold. */
-  colors: [
-    "#7C3AED", "#7C3AED", "#7C3AED", "#7C3AED", "#7C3AED", "#7C3AED",
-    "#F59E0B", "#F59E0B",
-    "#7C3AED", "#7C3AED", "#7C3AED", "#7C3AED", "#7C3AED", "#7C3AED",
-  ],
-};
+import {
+  axis,
+  CHART_PRIMARY,
+  CHART_WARNING,
+  count,
+  display,
+  DONUT_COLORS,
+  formatDate,
+  formatTime,
+  MORTALITY_STATUS,
+  percent,
+  recentDays,
+} from "./common";
+import { getFarmSettings } from "./settings";
+import { isoDaysAgo } from "@/lib/date";
 
-export const mortalityByCause = [
-  { name: "Heat stress", value: 185, color: "#7C3AED", display: "185" },
-  { name: "Disease", value: 117, color: "#A78BFA", display: "117" },
-  { name: "Injury", value: 78, color: "#C4B5FD", display: "78" },
-  { name: "Culling", value: 58, color: "#DDD6FE", display: "58" },
-  { name: "Unknown", value: 48, color: "#E4E4E7", display: "48" },
-];
-
-export type MortalityRecord = {
+export type MortalityRecordRow = {
+  id: number;
   date: string;
   time: string;
   flock: string;
@@ -36,75 +35,173 @@ export type MortalityRecord = {
   recordedBy: string;
   status: string;
   statusTone: Tone;
+  /** Raw enum value the status dialog posts back. */
+  statusKey: string;
 };
 
-export const mortalityRecords: MortalityRecord[] = [
-  {
-    date: "09 Aug 2026",
-    time: "08:12",
-    flock: "JF-2026-001",
-    house: "House 01",
-    deaths: "7",
-    cause: "Heat stress",
-    recordedBy: "Amina Okoro",
-    status: "Reviewed",
-    statusTone: "success",
-  },
-  {
-    date: "09 Aug 2026",
-    time: "08:40",
-    flock: "JF-2026-003",
-    house: "House 03",
-    deaths: "9",
-    deathsAlert: true,
-    cause: "Suspected coccidiosis",
-    recordedBy: "Tunde Bello",
-    status: "Escalated",
-    statusTone: "error",
-  },
-  {
-    date: "09 Aug 2026",
-    time: "09:05",
-    flock: "JF-2026-006",
-    house: "House 06",
-    deaths: "3",
-    cause: "Injury",
-    recordedBy: "Amina Okoro",
-    status: "Reviewed",
-    statusTone: "success",
-  },
-  {
-    date: "08 Aug 2026",
-    time: "17:20",
-    flock: "JF-2026-007",
-    house: "House 03",
-    deaths: "11",
-    deathsAlert: true,
-    cause: "Respiratory infection",
-    recordedBy: "Dr. Chike Eze",
-    status: "Under treatment",
-    statusTone: "warning",
-  },
-  {
-    date: "08 Aug 2026",
-    time: "08:15",
-    flock: "JF-2026-002",
-    house: "House 02",
-    deaths: "5",
-    cause: "Heat stress",
-    recordedBy: "Grace Amadi",
-    status: "Reviewed",
-    statusTone: "success",
-  },
-  {
-    date: "07 Aug 2026",
-    time: "16:45",
-    flock: "JF-2026-004",
-    house: "House 04",
-    deaths: "4",
-    cause: "Culling (low producer)",
-    recordedBy: "Grace Amadi",
-    status: "Reviewed",
-    statusTone: "success",
-  },
-];
+export type MortalityFilters = {
+  search?: string;
+  flock?: string;
+  house?: string;
+  cause?: string;
+  status?: string;
+  days?: number;
+};
+
+const isoDay = isoDaysAgo;
+
+/** Daily deaths for the last 14 days, ambered above the per-flock threshold. */
+export async function getMortalityTrend(days = 14) {
+  const range = recentDays(days, "dayOfMonth");
+  const settings = await getFarmSettings();
+
+  const rows = await db
+    .select({
+      day: mortalityRecords.occurredOn,
+      total: sql<number>`sum(${mortalityRecords.deaths})::int`,
+      peakPerFlock: sql<number>`max(${mortalityRecords.deaths})::int`,
+    })
+    .from(mortalityRecords)
+    .where(gte(mortalityRecords.occurredOn, range[0].key))
+    .groupBy(mortalityRecords.occurredOn);
+
+  const byDay = new Map(rows.map((row) => [row.day, row]));
+  const values = range.map((entry) => byDay.get(entry.key)?.total ?? 0);
+
+  // 15 deaths in one flock in a day is the board's alert level.
+  const alertLevel = Math.max(15, settings.dailyMortalityAlertPct * 40);
+  const colors = range.map((entry) =>
+    (byDay.get(entry.key)?.peakPerFlock ?? 0) >= alertLevel
+      ? CHART_WARNING
+      : CHART_PRIMARY,
+  );
+
+  const { max, ticks } = axis(Math.max(...values, 1));
+  return { labels: range.map((entry) => entry.label), ticks, max, values, colors };
+}
+
+export async function getMortalityByCause(days = 30) {
+  const rows = await db
+    .select({
+      cause: mortalityRecords.cause,
+      total: sql<number>`sum(${mortalityRecords.deaths})::int`,
+    })
+    .from(mortalityRecords)
+    .where(gte(mortalityRecords.occurredOn, isoDay(days)))
+    .groupBy(mortalityRecords.cause)
+    .orderBy(desc(sql`sum(${mortalityRecords.deaths})`))
+    .limit(6);
+
+  return rows.map((row, index) => ({
+    name: row.cause,
+    value: row.total,
+    color: DONUT_COLORS[index] ?? DONUT_COLORS.at(-1)!,
+    display: count(row.total),
+  }));
+}
+
+export async function getMortalityRecords(
+  filters: MortalityFilters = {},
+  limit = 50,
+  offset = 0,
+): Promise<MortalityRecordRow[]> {
+  const settings = await getFarmSettings();
+  const conditions = [];
+
+  if (filters.days) conditions.push(gte(mortalityRecords.occurredOn, isoDay(filters.days)));
+  if (filters.flock) conditions.push(eq(flocks.code, filters.flock));
+  if (filters.house) conditions.push(eq(houses.code, filters.house));
+  if (filters.cause) conditions.push(eq(mortalityRecords.cause, filters.cause));
+  if (filters.status) {
+    conditions.push(sql`${mortalityRecords.status}::text = ${filters.status}`);
+  }
+  if (filters.search) {
+    const term = `%${filters.search.toLowerCase()}%`;
+    conditions.push(
+      sql`(lower(${flocks.code}) like ${term} or lower(${mortalityRecords.cause}) like ${term})`,
+    );
+  }
+
+  const rows = await db
+    .select({
+      id: mortalityRecords.id,
+      occurredOn: mortalityRecords.occurredOn,
+      occurredAt: mortalityRecords.occurredAt,
+      deaths: mortalityRecords.deaths,
+      cause: mortalityRecords.cause,
+      status: mortalityRecords.status,
+      flockCode: flocks.code,
+      flockCurrent: flocks.currentCount,
+      houseName: houses.name,
+      recordedBy: users.name,
+    })
+    .from(mortalityRecords)
+    .innerJoin(flocks, eq(flocks.id, mortalityRecords.flockId))
+    .leftJoin(houses, eq(houses.id, mortalityRecords.houseId))
+    .leftJoin(users, eq(users.id, mortalityRecords.recordedById))
+    .where(conditions.length ? and(...conditions) : undefined)
+    .orderBy(desc(mortalityRecords.occurredOn), desc(mortalityRecords.occurredAt))
+    .limit(limit)
+    .offset(offset);
+
+  return rows.map((row) => {
+    const statusDisplay = display(MORTALITY_STATUS, row.status);
+    const dailyPct =
+      row.flockCurrent > 0 ? (row.deaths / row.flockCurrent) * 100 : 0;
+
+    return {
+      id: row.id,
+      date: formatDate(row.occurredOn),
+      time: formatTime(row.occurredAt),
+      flock: row.flockCode,
+      house: row.houseName ?? "—",
+      deaths: count(row.deaths),
+      deathsAlert: dailyPct >= settings.dailyMortalityAlertPct,
+      cause: row.cause,
+      recordedBy: row.recordedBy ?? "System",
+      status: statusDisplay.label,
+      statusTone: statusDisplay.tone,
+      statusKey: row.status,
+    };
+  });
+}
+
+export async function getMortalityKpis() {
+  const [totals] = await db
+    .select({
+      today: sql<number>`coalesce(sum(${mortalityRecords.deaths}) filter (where ${mortalityRecords.occurredOn} = ${isoDay(0)}), 0)::int`,
+      week: sql<number>`coalesce(sum(${mortalityRecords.deaths}) filter (where ${mortalityRecords.occurredOn} >= ${isoDay(6)}), 0)::int`,
+      previousWeek: sql<number>`coalesce(sum(${mortalityRecords.deaths}) filter (where ${mortalityRecords.occurredOn} >= ${isoDay(13)} and ${mortalityRecords.occurredOn} < ${isoDay(6)}), 0)::int`,
+      month: sql<number>`coalesce(sum(${mortalityRecords.deaths}) filter (where ${mortalityRecords.occurredOn} >= ${isoDay(29)}), 0)::int`,
+      openCases: sql<number>`count(*) filter (where ${mortalityRecords.status} in ('escalated','under_treatment'))::int`,
+    })
+    .from(mortalityRecords);
+
+  const [birds] = await db
+    .select({
+      total: sql<number>`coalesce(sum(${flocks.currentCount}), 0)::int`,
+    })
+    .from(flocks)
+    .where(sql`${flocks.status} <> 'closed'`);
+
+  const base = birds.total || 1;
+
+  return {
+    today: totals.today,
+    week: totals.week,
+    month: totals.month,
+    openCases: totals.openCases,
+    weeklyRatePct: (totals.week / base) * 100,
+    weeklyRateLabel: percent((totals.week / base) * 100, 2),
+    weekChange: totals.week - totals.previousWeek,
+  };
+}
+
+/** Distinct causes, for the filter bar and the cause picker in the modal. */
+export async function getMortalityCauses() {
+  const rows = await db
+    .selectDistinct({ cause: mortalityRecords.cause })
+    .from(mortalityRecords)
+    .orderBy(mortalityRecords.cause);
+  return rows.map((row) => row.cause);
+}

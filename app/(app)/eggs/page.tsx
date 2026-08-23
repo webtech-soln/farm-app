@@ -1,12 +1,9 @@
 import {
   CalendarRange,
-  ChevronDown,
-  Download,
   Egg,
   EggOff,
   Gauge,
   Minus,
-  Plus,
   Trash2,
   TrendingDown,
   TrendingUp,
@@ -15,8 +12,8 @@ import {
 import { BarChart, ChartLegend, chartColors } from "@/components/charts/bar-chart";
 import { Donut, DonutLegend } from "@/components/charts/donut";
 import { PageHeader } from "@/components/layout/page-header";
+import { ExportButton } from "@/components/ui/export-button";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card, PanelHead } from "@/components/ui/card";
 import {
   CellStack,
@@ -25,16 +22,26 @@ import {
   TableFooter,
   type Column,
 } from "@/components/ui/data-table";
-import { GhostButton } from "@/components/ui/ghost-button";
+import { Pager } from "@/components/ui/pager";
+import { RangeSelect } from "@/components/ui/range-select";
 import { KpiCard } from "@/components/ui/kpi-card";
 import { toneText } from "@/components/ui/tone";
 import {
-  collections,
-  eggTrend,
-  gradeDistribution,
-  sizeBreakdown,
+  DeleteEggCollectionDialog,
+  EggCollectionDialog,
+} from "@/components/dialogs/record-dialogs";
+import { getFlockOptions } from "@/lib/data/flocks";
+import { getHouseOptions } from "@/lib/data/houses";
+import { pageWindow, paginate, param } from "@/lib/pagination";
+import {
+  getCollections,
+  getEggKpis,
+  getEggTrend,
+  getGradeDistribution,
+  getSizeBreakdown,
   type Collection,
 } from "@/lib/data/eggs";
+import { count, percent, signedPercent } from "@/lib/format";
 
 const columns: Column<Collection>[] = [
   {
@@ -90,9 +97,65 @@ const columns: Column<Collection>[] = [
     width: 128,
     cell: (row) => <Badge tone={row.statusTone}>{row.status}</Badge>,
   },
+  {
+    header: "",
+    width: 48,
+    align: "right",
+    cell: (row) => (
+      <div className="flex items-center justify-end">
+        <DeleteEggCollectionDialog id={row.id} />
+      </div>
+    ),
+  },
 ];
 
-export default function EggsPage() {
+export default async function EggsPage({
+  searchParams,
+}: PageProps<"/eggs">) {
+  const params = await searchParams;
+  const window = pageWindow(params);
+  const days = Number(param(params, "days") ?? 14);
+  const filters = {
+    search: param(params, "q"),
+    house: param(params, "house"),
+    session: param(params, "session"),
+  };
+
+  const [
+    kpis,
+    eggTrend,
+    gradeDistribution,
+    sizeBreakdown,
+    rows,
+    houses,
+    flocks,
+  ] = await Promise.all([
+      getEggKpis(),
+      getEggTrend(days),
+      getGradeDistribution(),
+      getSizeBreakdown(),
+      getCollections(filters, window.limit, window.offset),
+      getHouseOptions(),
+      getFlockOptions({ activeOnly: true }),
+    ]);
+
+  const collections = paginate(rows, window);
+
+  const change = (current: number, previous: number) =>
+    previous > 0 ? ((current - previous) / previous) * 100 : 0;
+  const dayChange = change(kpis.today, kpis.yesterday);
+  const weekChange = change(kpis.week, kpis.previousWeek);
+  const brokenChange = change(kpis.brokenToday, kpis.brokenYesterday);
+  const gradedToday = gradeDistribution.reduce(
+    (sum, slice) => sum + slice.value,
+    0,
+  );
+  const today = new Date().toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  });
+
   return (
     <>
       <PageHeader
@@ -100,57 +163,59 @@ export default function EggsPage() {
         breadcrumb={["Operations", "Egg Production"]}
         subtitle="Collection, grading and wastage across layer houses."
       >
-        <Button variant="secondary" icon={Download}>
-          Export
-        </Button>
-        <Button icon={Plus}>Record Eggs</Button>
+        <ExportButton board="eggs" />
+        <EggCollectionDialog houses={houses} flocks={flocks} />
       </PageHeader>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <KpiCard
           label="Eggs Today"
           icon={Egg}
-          value="18,420"
-          delta="+5.8%"
-          deltaIcon={TrendingUp}
-          deltaTone="success"
+          value={count(kpis.today)}
+          delta={signedPercent(dayChange)}
+          deltaIcon={dayChange >= 0 ? TrendingUp : TrendingDown}
+          deltaTone={dayChange >= 0 ? "success" : "warning"}
           note="vs yesterday"
         />
         <KpiCard
           label="Eggs This Week"
           icon={CalendarRange}
-          value="127,340"
-          delta="+3.1%"
-          deltaIcon={TrendingUp}
-          deltaTone="success"
+          value={count(kpis.week)}
+          delta={signedPercent(weekChange)}
+          deltaIcon={weekChange >= 0 ? TrendingUp : TrendingDown}
+          deltaTone={weekChange >= 0 ? "success" : "warning"}
           note="vs last week"
         />
         <KpiCard
           label="Production Rate"
           icon={Gauge}
-          value="87.4%"
-          delta="+1.2pp"
-          deltaIcon={TrendingUp}
-          deltaTone="success"
+          iconTone={kpis.belowTarget ? "warning" : undefined}
+          value={percent(kpis.henDayRate)}
+          delta={kpis.belowTarget ? "Below target" : "On target"}
+          deltaIcon={kpis.belowTarget ? TrendingDown : TrendingUp}
+          deltaTone={kpis.belowTarget ? "warning" : "success"}
           note="hen-day average"
         />
         <KpiCard
           label="Broken Eggs"
           icon={EggOff}
-          value="214"
-          delta="↓ 8%"
-          deltaIcon={TrendingDown}
-          deltaTone="success"
+          value={count(kpis.brokenToday)}
+          delta={signedPercent(brokenChange)}
+          deltaIcon={brokenChange <= 0 ? TrendingDown : TrendingUp}
+          deltaTone={brokenChange <= 0 ? "success" : "warning"}
           note="vs yesterday"
         />
         <KpiCard
           label="Egg Wastage"
           icon={Trash2}
-          value="1.2%"
-          delta="stable"
-          deltaIcon={Minus}
-          deltaTone="neutral"
-          note="within tolerance"
+          iconTone={kpis.wastageRate > 2 ? "warning" : undefined}
+          value={percent(kpis.wastageRate)}
+          delta={kpis.wastageRate > 2 ? "High" : "Stable"}
+          deltaIcon={kpis.wastageRate > 2 ? TrendingUp : Minus}
+          deltaTone={kpis.wastageRate > 2 ? "warning" : "neutral"}
+          note={
+            kpis.wastageRate > 2 ? "above tolerance" : "within tolerance"
+          }
         />
       </div>
 
@@ -160,7 +225,15 @@ export default function EggsPage() {
             title="Daily Egg Production"
             subtitle="Collected vs sold · last 14 days"
           >
-            <GhostButton icon={ChevronDown}>Last 14 days</GhostButton>
+            <RangeSelect
+              name="days"
+              defaultValue="14"
+              options={[
+                { value: "7", label: "Last 7 days" },
+                { value: "14", label: "Last 14 days" },
+                { value: "30", label: "Last 30 days" },
+              ]}
+            />
           </PanelHead>
           <ChartLegend
             series={[
@@ -198,7 +271,7 @@ export default function EggsPage() {
             <Donut
               slices={gradeDistribution}
               size={150}
-              caption="18,420"
+              caption={count(gradedToday)}
               captionLabel="eggs"
             />
             <DonutLegend slices={gradeDistribution} />
@@ -237,16 +310,19 @@ export default function EggsPage() {
         <PanelHead
           inset
           title="Collection Records"
-          subtitle="Today · 09 August 2026"
+          subtitle={`Today · ${today}`}
         />
         <DataTable
           columns={columns}
-          rows={collections}
-          rowKey={(row, index) => `${row.time}-${index}`}
+          rows={collections.rows}
+          rowKey={(row) => String(row.id)}
         />
-        <TableFooter summary="Showing 6 of 6 collections today">
-          <GhostButton>Previous</GhostButton>
-          <GhostButton>Next</GhostButton>
+        <TableFooter summary={`Showing ${collections.range} collections`}>
+          <Pager
+            page={collections.page}
+            hasNext={collections.hasNext}
+            hasPrevious={collections.hasPrevious}
+          />
         </TableFooter>
       </Card>
     </>

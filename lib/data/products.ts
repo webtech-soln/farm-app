@@ -1,4 +1,12 @@
+import "server-only";
+
+import { desc, eq, sql } from "drizzle-orm";
+
 import type { Tone } from "@/components/ui/tone";
+import { db } from "@/lib/db";
+import { orderItems, orders, products as table } from "@/lib/db/schema";
+
+import { count, decimal, display, money, percent, PRODUCT_STATUS } from "./common";
 
 /** Icon keys resolved to lucide components on the page. */
 export type ProductIcon =
@@ -9,7 +17,21 @@ export type ProductIcon =
   | "layers"
   | "beef";
 
-export type Product = {
+const ICONS: ProductIcon[] = [
+  "package",
+  "egg",
+  "bird",
+  "sprout",
+  "layers",
+  "beef",
+];
+
+function iconFor(value: string | null): ProductIcon {
+  return ICONS.includes(value as ProductIcon) ? (value as ProductIcon) : "package";
+}
+
+export type ProductRow = {
+  id: number;
   name: string;
   category: string;
   icon: ProductIcon;
@@ -23,77 +45,33 @@ export type Product = {
   note: string;
 };
 
-export const products: Product[] = [
-  {
-    name: "Live Birds",
-    category: "Poultry",
-    icon: "package",
-    status: "In stock",
-    statusTone: "success",
-    price: "$6.40",
-    unit: "per bird",
-    available: "2,480 available",
-    note: "+14% demand",
-  },
-  {
-    name: "Table Eggs",
-    category: "Eggs",
-    icon: "egg",
-    status: "In stock",
-    statusTone: "success",
-    price: "$3.10",
-    unit: "per crate",
-    available: "612 crates",
-    note: "+6% demand",
-  },
-  {
-    name: "Day-old Chicks",
-    category: "Poultry",
-    icon: "bird",
-    status: "Out of stock",
-    statusTone: "error",
-    price: "$1.20",
-    unit: "per chick",
-    available: "0 available",
-    availableTone: "error",
-    note: "Restock 18 Aug",
-  },
-  {
-    name: "Manure (bagged)",
-    category: "By-product",
-    icon: "sprout",
-    status: "In stock",
-    statusTone: "success",
-    price: "$2.80",
-    unit: "per bag",
-    available: "340 bags",
-    note: "Steady",
-  },
-  {
-    name: "Spent Layers",
-    category: "Poultry",
-    icon: "layers",
-    status: "Low stock",
-    statusTone: "warning",
-    price: "$4.20",
-    unit: "per bird",
-    available: "180 birds",
-    note: "Cull batch due",
-  },
-  {
-    name: "Processed Chicken",
-    category: "Processed",
-    icon: "beef",
-    status: "In stock",
-    statusTone: "success",
-    price: "$9.60",
-    unit: "per kg",
-    available: "420 kg",
-    note: "+22% demand",
-  },
-];
+export async function getProducts(): Promise<ProductRow[]> {
+  const rows = await db
+    .select()
+    .from(table)
+    .where(eq(table.isActive, true))
+    .orderBy(desc(table.availableQty));
 
-export type ProductPerformance = {
+  return rows.map((row) => {
+    const statusDisplay = display(PRODUCT_STATUS, row.status);
+    return {
+      id: row.id,
+      name: row.name,
+      category: row.category,
+      icon: iconFor(row.icon),
+      status: statusDisplay.label,
+      statusTone: statusDisplay.tone,
+      price: money(row.priceCents),
+      unit: row.unit,
+      available: `${count(row.availableQty)} ${row.availableUnit ?? "available"}`,
+      availableTone: row.availableQty <= 0 ? "error" : undefined,
+      note: row.note ?? "—",
+    };
+  });
+}
+
+export type ProductPerformanceRow = {
+  id: number;
   name: string;
   units: string;
   revenue: string;
@@ -106,69 +84,176 @@ export type ProductPerformance = {
   trendTone: Tone;
 };
 
-export const productPerformance: ProductPerformance[] = [
-  {
-    name: "Table Eggs",
-    units: "18,940",
-    revenue: "$11,420",
-    cost: "$7,180",
-    margin: "37.1%",
-    marginTone: "success",
-    orders: "84",
-    trend: "Growing",
-    trendTone: "success",
-  },
-  {
-    name: "Live Birds",
-    units: "1,240",
-    revenue: "$7,936",
-    cost: "$5,410",
-    margin: "31.8%",
-    marginTone: "success",
-    orders: "36",
-    trend: "Growing",
-    trendTone: "success",
-  },
-  {
-    name: "Processed Chicken",
-    units: "380 kg",
-    revenue: "$3,648",
-    cost: "$2,640",
-    margin: "27.6%",
-    orders: "22",
-    trend: "Steady",
-    trendTone: "info",
-  },
-  {
-    name: "Manure (bagged)",
-    units: "420",
-    revenue: "$1,176",
-    cost: "$310",
-    margin: "73.6%",
-    marginTone: "success",
-    orders: "14",
-    trend: "Steady",
-    trendTone: "info",
-  },
-  {
-    name: "Spent Layers",
-    units: "140",
-    revenue: "$588",
-    cost: "$402",
-    margin: "31.6%",
-    orders: "6",
-    trend: "Declining",
-    trendTone: "warning",
-  },
-  {
-    name: "Day-old Chicks",
-    units: "0",
-    revenue: "$0",
-    cost: "$0",
-    margin: "—",
-    marginTone: "neutral",
-    orders: "0",
-    trend: "Out of stock",
-    trendTone: "error",
-  },
-];
+/**
+ * Sales performance per product over a rolling window. Cancelled orders are
+ * excluded — they never became revenue.
+ */
+export async function getProductPerformance(
+  days = 30,
+): Promise<ProductPerformanceRow[]> {
+  const rows = await db
+    .select({
+      id: table.id,
+      name: table.name,
+      unit: table.unit,
+      status: table.status,
+      costCents: table.costCents,
+      units: sql<number>`coalesce(sum(${orderItems.quantity}) filter (where ${orders.placedAt} >= current_date - ${days}::int), 0)::double precision`,
+      revenue: sql<number>`coalesce(sum(${orderItems.lineTotalCents}) filter (where ${orders.placedAt} >= current_date - ${days}::int), 0)::bigint`,
+      orderCount: sql<number>`count(distinct ${orders.id}) filter (where ${orders.placedAt} >= current_date - ${days}::int)::int`,
+      previousRevenue: sql<number>`coalesce(sum(${orderItems.lineTotalCents}) filter (where ${orders.placedAt} >= current_date - ${days * 2}::int and ${orders.placedAt} < current_date - ${days}::int), 0)::bigint`,
+    })
+    .from(table)
+    .leftJoin(orderItems, eq(orderItems.productId, table.id))
+    .leftJoin(
+      orders,
+      sql`${orders.id} = ${orderItems.orderId} and ${orders.status} <> 'cancelled'`,
+    )
+    .where(eq(table.isActive, true))
+    .groupBy(table.id, table.name, table.unit, table.status, table.costCents)
+    .orderBy(
+      desc(
+        sql`coalesce(sum(${orderItems.lineTotalCents}) filter (where ${orders.placedAt} >= current_date - ${days}::int), 0)`,
+      ),
+    );
+
+  return rows.map((row) => {
+    const revenue = Number(row.revenue);
+    const previous = Number(row.previousRevenue);
+    const cost = Math.round(row.units * row.costCents);
+    const margin = revenue > 0 ? ((revenue - cost) / revenue) * 100 : null;
+
+    // Products with no sales in either window read as flat, not "declining",
+    // and a first-ever sale is "New" rather than infinite growth.
+    let trend = "Steady";
+    let trendTone: Tone = "info";
+    if (row.status === "out_of_stock") {
+      trend = "Out of stock";
+      trendTone = "error";
+    } else if (revenue === 0 && previous === 0) {
+      trend = "No sales";
+      trendTone = "neutral";
+    } else if (previous === 0) {
+      trend = "New";
+      trendTone = "success";
+    } else if (revenue > previous * 1.05) {
+      trend = "Growing";
+      trendTone = "success";
+    } else if (revenue < previous * 0.95) {
+      trend = "Declining";
+      trendTone = "warning";
+    }
+
+    return {
+      id: row.id,
+      name: row.name,
+      units:
+        row.unit === "per kg"
+          ? `${decimal(row.units, 0)} kg`
+          : count(row.units),
+      revenue: money(revenue),
+      cost: money(cost),
+      margin: margin === null ? "—" : percent(margin),
+      marginTone:
+        margin === null ? "neutral" : margin >= 30 ? "success" : undefined,
+      orders: count(row.orderCount),
+      trend,
+      trendTone,
+    };
+  });
+}
+
+export async function getProductKpis(days = 30) {
+  const [[counts], [sales]] = await Promise.all([
+    db
+      .select({
+        active: sql<number>`count(*) filter (where ${table.isActive})::int`,
+        outOfStock: sql<number>`count(*) filter (where ${table.isActive} and ${table.status} = 'out_of_stock')::int`,
+      })
+      .from(table),
+    db
+      .select({
+        units: sql<number>`coalesce(sum(${orderItems.quantity}) filter (where ${orders.placedAt} >= current_date - ${days}::int), 0)::double precision`,
+        revenue: sql<number>`coalesce(sum(${orderItems.lineTotalCents}) filter (where ${orders.placedAt} >= current_date - ${days}::int), 0)::bigint`,
+        cost: sql<number>`coalesce(sum(${orderItems.quantity} * ${table.costCents}) filter (where ${orders.placedAt} >= current_date - ${days}::int), 0)::bigint`,
+        previousRevenue: sql<number>`coalesce(sum(${orderItems.lineTotalCents}) filter (where ${orders.placedAt} >= current_date - ${days * 2}::int and ${orders.placedAt} < current_date - ${days}::int), 0)::bigint`,
+        previousUnits: sql<number>`coalesce(sum(${orderItems.quantity}) filter (where ${orders.placedAt} >= current_date - ${days * 2}::int and ${orders.placedAt} < current_date - ${days}::int), 0)::double precision`,
+      })
+      .from(orderItems)
+      .innerJoin(orders, eq(orders.id, orderItems.orderId))
+      .leftJoin(table, eq(table.id, orderItems.productId))
+      .where(sql`${orders.status} <> 'cancelled'`),
+  ]);
+
+  const revenue = Number(sales.revenue);
+  const previousRevenue = Number(sales.previousRevenue);
+  const cost = Number(sales.cost);
+
+  return {
+    active: counts.active,
+    outOfStock: counts.outOfStock,
+    units: sales.units,
+    unitsChangePct:
+      sales.previousUnits > 0
+        ? ((sales.units - sales.previousUnits) / sales.previousUnits) * 100
+        : 0,
+    revenue,
+    revenueLabel: money(revenue),
+    revenueChangePct:
+      previousRevenue > 0
+        ? ((revenue - previousRevenue) / previousRevenue) * 100
+        : 0,
+    averageMargin: revenue > 0 ? ((revenue - cost) / revenue) * 100 : 0,
+  };
+}
+
+export type ProductFormValues = {
+  id: number;
+  name: string;
+  category: string;
+  icon: string;
+  priceCents: number;
+  costCents: number;
+  unit: string;
+  availableQty: number;
+  availableUnit: string | null;
+  note: string | null;
+};
+
+/** Raw column values keyed by id, so the edit modal can prefill its fields. */
+export async function getProductFormValues(): Promise<
+  Map<number, ProductFormValues>
+> {
+  const rows = await db
+    .select({
+      id: table.id,
+      name: table.name,
+      category: table.category,
+      icon: table.icon,
+      priceCents: table.priceCents,
+      costCents: table.costCents,
+      unit: table.unit,
+      availableQty: table.availableQty,
+      availableUnit: table.availableUnit,
+      note: table.note,
+    })
+    .from(table)
+    .where(eq(table.isActive, true));
+
+  return new Map(rows.map((row) => [row.id, row]));
+}
+
+/** Product picker options for the order form. */
+export async function getProductOptions() {
+  return db
+    .select({
+      id: table.id,
+      name: table.name,
+      unit: table.unit,
+      priceCents: table.priceCents,
+      availableQty: table.availableQty,
+    })
+    .from(table)
+    .where(eq(table.isActive, true))
+    .orderBy(table.name);
+}

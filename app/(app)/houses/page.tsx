@@ -1,12 +1,10 @@
 import Link from "next/link";
 import {
   Bird,
-  Download,
   Droplets,
   HeartPulse,
   Layers,
   LayoutGrid,
-  Plus,
   ShieldCheck,
   Thermometer,
   TriangleAlert,
@@ -19,11 +17,20 @@ import { ColumnChart } from "@/components/charts/column-chart";
 import { Donut, DonutLegend } from "@/components/charts/donut";
 import { ProgressRail } from "@/components/charts/progress-rail";
 import { PageHeader } from "@/components/layout/page-header";
+import { ExportButton } from "@/components/ui/export-button";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card, PanelHead } from "@/components/ui/card";
 import { MetricStrip } from "@/components/ui/metric-strip";
-import { farmSummary, healthDistribution, houses } from "@/lib/data/houses";
+import {
+  DeleteHouseDialog,
+  HouseFormDialog,
+} from "@/components/dialogs/house-dialogs";
+import {
+  getFarmSummary,
+  getHealthDistribution,
+  getHouses,
+  getTemperatureByHouse,
+} from "@/lib/data/houses";
 
 const summaryIcons: Record<string, LucideIcon> = {
   warehouse: Warehouse,
@@ -34,14 +41,25 @@ const summaryIcons: Record<string, LucideIcon> = {
   "shield-check": ShieldCheck,
 };
 
-export default function HousesPage() {
+export default async function HousesPage() {
+  const [farmSummary, houses, temperatureByHouse, healthDistribution] =
+    await Promise.all([
+      getFarmSummary(),
+      getHouses(),
+      getTemperatureByHouse(),
+      getHealthDistribution(),
+    ]);
+
+  const activeFlocks = healthDistribution.reduce(
+    (sum, slice) => sum + slice.value,
+    0,
+  );
+
   return (
     <>
       <PageHeader title="Farm Overview" breadcrumb={["Farm", "Overview"]}>
-        <Button variant="secondary" icon={Download}>
-          Export
-        </Button>
-        <Button icon={Plus}>Add House</Button>
+        <ExportButton board="houses" />
+        <HouseFormDialog />
       </PageHeader>
 
       <MetricStrip
@@ -69,12 +87,17 @@ export default function HousesPage() {
                 </span>
               </div>
               <Badge tone={house.statusTone}>{house.status}</Badge>
+              <div className="flex shrink-0 items-center">
+                <HouseFormDialog house={house} />
+                <DeleteHouseDialog id={house.dbId} name={house.name} />
+              </div>
             </div>
 
             <div className="flex flex-col gap-1.5">
               <div className="flex items-center gap-2">
                 <span className="flex-1 text-sm-plus font-medium text-ink">
-                  {house.birds} / {house.capacity} birds
+                  {house.birds.toLocaleString("en-US")} /{" "}
+                  {house.capacity.toLocaleString("en-US")} birds
                 </span>
                 <span className="text-xs-plus font-semibold text-ink-2">
                   {house.occupancy}%
@@ -115,34 +138,29 @@ export default function HousesPage() {
             title="Temperature by House"
             subtitle="Current reading · optimal band 24–30°C"
           >
-            <span className="flex items-center gap-1.5 rounded-full bg-warning-bg px-2.5 py-1 text-xs-plus font-semibold text-warning">
-              <TriangleAlert className="size-3.5" />2 out of band
-            </span>
+            {temperatureByHouse.outOfBand > 0 ? (
+              <span className="flex items-center gap-1.5 rounded-full bg-warning-bg px-2.5 py-1 text-xs-plus font-semibold text-warning">
+                <TriangleAlert className="size-3.5" />
+                {temperatureByHouse.outOfBand} out of band
+              </span>
+            ) : null}
           </PanelHead>
           <ColumnChart
             ticks={["36°", "27°", "18°", "9°", "0°"]}
             max={36}
-            data={houses.map((house) => ({
-              label: house.name.replace("House ", "H"),
-              value: house.temp,
-              display: `${house.temp}°`,
-              color: house.tempOutOfBand ? "#F59E0B" : "#7C3AED",
-              labelClassName: house.tempOutOfBand
-                ? "text-xs font-semibold text-warning"
-                : "text-xs font-semibold text-ink-2",
-            }))}
+            data={temperatureByHouse.data}
           />
         </Card>
 
         <Card className="flex flex-col gap-4 p-4 xl:w-[470px]">
           <PanelHead
             title="Flock Health Distribution"
-            subtitle="8 active flocks"
+            subtitle={`${activeFlocks} active flocks`}
           />
           <div className="flex flex-wrap items-center gap-6">
             <Donut
               slices={healthDistribution}
-              caption="8"
+              caption={String(activeFlocks)}
               captionLabel="flocks"
             />
             <DonutLegend slices={healthDistribution} />

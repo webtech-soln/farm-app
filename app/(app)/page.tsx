@@ -1,10 +1,11 @@
-import { Calendar, ChevronDown, Plus, SlidersHorizontal } from "lucide-react";
+import { Calendar, Plus } from "lucide-react";
 
 import { BarChart, ChartLegend, chartColors } from "@/components/charts/bar-chart";
 import { ProgressRail } from "@/components/charts/progress-rail";
 import { PageHeader } from "@/components/layout/page-header";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { ButtonLink } from "@/components/ui/button";
+import { requireUser } from "@/lib/auth/session";
 import { Card } from "@/components/ui/card";
 import {
   CellStack,
@@ -13,21 +14,22 @@ import {
   TableFooter,
   type Column,
 } from "@/components/ui/data-table";
-import { GhostButton } from "@/components/ui/ghost-button";
 import { IconChip } from "@/components/ui/icon-chip";
 import { KpiCard, KpiGrid } from "@/components/ui/kpi-card";
 import { SegmentedControl } from "@/components/ui/tabs";
 import { toneBg, toneText } from "@/components/ui/tone";
 import {
-  attentionAlerts,
-  dashboardKpis,
-  financeChart,
-  flockPerformance,
-  houseOccupancy,
-  productionChart,
-  todaysTasks,
+  getAttentionAlerts,
+  getDashboardKpis,
+  getFinanceChart,
+  getFlockPerformance,
+  getGreetingContext,
+  getHouseOccupancy,
+  getProductionChart,
+  getTodaysTasks,
   type FlockRow,
 } from "@/lib/data/dashboard";
+import { getFlockKpis } from "@/lib/data/flocks";
 
 const flockColumns: Column<FlockRow>[] = [
   {
@@ -69,21 +71,49 @@ const flockColumns: Column<FlockRow>[] = [
   },
 ];
 
-export default function DashboardPage() {
+export default async function DashboardPage() {
+  const [
+    user,
+    { greeting, today },
+    dashboardKpis,
+    productionChart,
+    financeChart,
+    flockPerformance,
+    flockKpis,
+    houseOccupancy,
+    attentionAlerts,
+    todaysTasks,
+  ] = await Promise.all([
+    requireUser(),
+    getGreetingContext(),
+    getDashboardKpis(),
+    getProductionChart(),
+    getFinanceChart(),
+    getFlockPerformance(),
+    getFlockKpis(),
+    getHouseOccupancy(),
+    getAttentionAlerts(),
+    getTodaysTasks(),
+  ]);
+
   const totalBirds = houseOccupancy.reduce((sum, h) => sum + h.current, 0);
   const totalCapacity = houseOccupancy.reduce((sum, h) => sum + h.capacity, 0);
-  const utilisation = (totalBirds / totalCapacity) * 100;
+  const utilisation = totalCapacity > 0 ? (totalBirds / totalCapacity) * 100 : 0;
+  const housesInUse = houseOccupancy.filter((h) => h.current > 0).length;
+  const tasksDone = todaysTasks.filter((task) => task.done).length;
 
   return (
     <>
       <PageHeader
-        title="Good morning, Samuel"
+        title={`${greeting}, ${user.name.split(" ")[0]}`}
         subtitle="Here's what's happening across Jayda Farms today."
       >
-        <Button variant="secondary" icon={Calendar} trailingIcon={ChevronDown}>
-          Today · 09 Aug 2026
-        </Button>
-        <Button icon={Plus}>Add Record</Button>
+        <ButtonLink href="/records/daily" variant="secondary" icon={Calendar}>
+          Today · {today}
+        </ButtonLink>
+        <ButtonLink href="/records/daily" icon={Plus}>
+          Add Record
+        </ButtonLink>
       </PageHeader>
 
       <KpiGrid>
@@ -181,20 +211,25 @@ export default function DashboardPage() {
                   Flock Performance
                 </h2>
                 <p className="text-sm text-ink-2">
-                  8 active flocks across 4 houses
+                  {flockKpis.activeFlocks} active flocks across {housesInUse}{" "}
+                  houses
                 </p>
               </div>
-              <GhostButton icon={SlidersHorizontal}>Filter</GhostButton>
-              <GhostButton>View all</GhostButton>
+              <ButtonLink href="/flocks" variant="ghost">
+                View all
+              </ButtonLink>
             </div>
             <DataTable
               columns={flockColumns}
               rows={flockPerformance}
               rowKey={(row) => row.id}
             />
-            <TableFooter summary="Showing 5 of 8 flocks">
-              <GhostButton>Previous</GhostButton>
-              <GhostButton>Next</GhostButton>
+            <TableFooter
+              summary={`Showing ${flockPerformance.length} of ${flockKpis.activeFlocks} flocks`}
+            >
+              <ButtonLink href="/flocks" variant="ghost">
+                All flocks
+              </ButtonLink>
             </TableFooter>
           </Card>
 
@@ -247,7 +282,7 @@ export default function DashboardPage() {
                 Attention Required
               </h2>
               <Badge tone="error" dot={false}>
-                3 active
+                {attentionAlerts.length} active
               </Badge>
             </div>
             {attentionAlerts.map((alert) => (
@@ -282,10 +317,12 @@ export default function DashboardPage() {
               <h2 className="flex-1 text-md font-semibold text-ink">
                 Today&apos;s Tasks
               </h2>
-              <span className="text-xs-plus text-ink-3">2 of 5 done</span>
+              <span className="text-xs-plus text-ink-3">
+                {tasksDone} of {todaysTasks.length} done
+              </span>
             </div>
             {todaysTasks.map((task) => (
-              <div key={task.title} className="flex items-center gap-2.5 py-1.5">
+              <div key={task.id} className="flex items-center gap-2.5 py-1.5">
                 <span
                   className={`flex size-[18px] shrink-0 items-center justify-center rounded-[5px] border-[1.5px] ${
                     task.done

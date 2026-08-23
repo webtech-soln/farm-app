@@ -1,11 +1,7 @@
 import {
-  ArrowDownToLine,
   Banknote,
   CalendarRange,
-  ChevronDown,
-  Download,
-  Plus,
-  ShoppingCart,
+  TrendingDown,
   TrendingUp,
   TriangleAlert,
   Utensils,
@@ -15,8 +11,12 @@ import {
 import { BarChart, ChartLegend, chartColors } from "@/components/charts/bar-chart";
 import { Donut, DonutLegend } from "@/components/charts/donut";
 import { PageHeader } from "@/components/layout/page-header";
+import { ExportButton } from "@/components/ui/export-button";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import {
+  InventoryItemDialog,
+  StockMovementDialog,
+} from "@/components/dialogs/inventory-dialogs";
 import { Card, PanelHead } from "@/components/ui/card";
 import {
   CellStack,
@@ -26,12 +26,23 @@ import {
   type Column,
 } from "@/components/ui/data-table";
 import { FilterBar } from "@/components/ui/filter-bar";
-import { GhostButton } from "@/components/ui/ghost-button";
+import { Pager } from "@/components/ui/pager";
+import { RangeSelect } from "@/components/ui/range-select";
 import { KpiCard, KpiGrid } from "@/components/ui/kpi-card";
 import { toneText } from "@/components/ui/tone";
-import { feedInventory, feedTrend, stockByType, type FeedItem } from "@/lib/data/feed";
+import { getSupplierOptions } from "@/lib/data/suppliers";
+import { paginateAll, param } from "@/lib/pagination";
+import {
+  getFeedInventory,
+  getFeedKpis,
+  getFeedOptions,
+  getFeedTrend,
+  getStockByType,
+  type FeedItemRow,
+} from "@/lib/data/feed";
+import { percent, signedPercent } from "@/lib/format";
 
-const columns: Column<FeedItem>[] = [
+const columns: Column<FeedItemRow>[] = [
   {
     header: "FEED",
     cell: (row) => <CellStack primary={row.name} secondary={row.batch} />,
@@ -82,9 +93,53 @@ const columns: Column<FeedItem>[] = [
     width: 132,
     cell: (row) => <Badge tone={row.statusTone}>{row.status}</Badge>,
   },
+  {
+    header: "",
+    width: 76,
+    align: "right",
+    cell: (row) => (
+      <div className="flex items-center justify-end">
+        <StockMovementDialog
+          type="stock_in"
+          items={[]}
+          itemId={row.id}
+          label={`Receive ${row.name}`}
+          variant="icon"
+        />
+        <StockMovementDialog
+          type="stock_out"
+          items={[]}
+          itemId={row.id}
+          label={`Issue ${row.name}`}
+          variant="icon"
+        />
+      </div>
+    ),
+  },
 ];
 
-export default function FeedPage() {
+export default async function FeedPage({
+  searchParams,
+}: PageProps<"/feed">) {
+  const params = await searchParams;
+  const days = Number(param(params, "days") ?? 14);
+  const filters = {
+    search: param(params, "q"),
+    supplier: param(params, "supplier"),
+  };
+
+  const [kpis, feedTrend, stockByType, allFeed, feedItems, suppliers] =
+    await Promise.all([
+    getFeedKpis(),
+    getFeedTrend(days),
+    getStockByType(),
+    getFeedInventory(filters),
+    getFeedOptions(),
+    getSupplierOptions(),
+  ]);
+
+  const feedInventory = paginateAll(allFeed, params);
+
   return (
     <>
       <PageHeader
@@ -92,52 +147,61 @@ export default function FeedPage() {
         breadcrumb={["Operations", "Feed"]}
         subtitle="Stock levels, consumption and cost across all houses."
       >
-        <Button variant="secondary" icon={ArrowDownToLine}>
-          Stock In
-        </Button>
-        <Button variant="secondary" icon={Download}>
-          Export
-        </Button>
-        <Button icon={Plus}>Record Feed</Button>
+        <StockMovementDialog
+          type="stock_in"
+          items={feedItems}
+          label="Stock In"
+        />
+        <ExportButton board="feed" />
+        <StockMovementDialog
+          type="stock_out"
+          items={feedItems}
+          label="Record Feed"
+          variant="primary"
+        />
       </PageHeader>
 
       <KpiGrid>
         <KpiCard
           label="Total Feed Stock"
           icon={Wheat}
-          iconTone="warning"
-          value="4.8 tons"
-          delta="Low"
-          deltaIcon={TriangleAlert}
-          deltaTone="warning"
-          note="2 items below minimum"
+          iconTone={kpis.lowStock || kpis.belowMinimum ? "warning" : undefined}
+          value={kpis.stockLabel}
+          delta={kpis.lowStock ? "Low" : "Healthy"}
+          deltaIcon={kpis.lowStock ? TriangleAlert : TrendingUp}
+          deltaTone={kpis.lowStock ? "warning" : "success"}
+          note={`${kpis.belowMinimum} item${
+            kpis.belowMinimum === 1 ? "" : "s"
+          } below minimum`}
         />
         <KpiCard
           label="Consumed Today"
           icon={Utensils}
-          value="2.9 tons"
-          delta="+40 kg"
-          deltaIcon={TrendingUp}
+          value={kpis.todayLabel}
+          delta={`${kpis.todayChangeKg >= 0 ? "+" : ""}${kpis.todayChangeKg} kg`}
+          deltaIcon={kpis.todayChangeKg >= 0 ? TrendingUp : TrendingDown}
           deltaTone="neutral"
-          note="across 6 houses"
+          note={`across ${kpis.housesFed} house${
+            kpis.housesFed === 1 ? "" : "s"
+          }`}
         />
         <KpiCard
           label="Consumed This Week"
           icon={CalendarRange}
-          value="19.4 tons"
-          delta="+3.8%"
-          deltaIcon={TrendingUp}
-          deltaTone="error"
+          value={kpis.weekLabel}
+          delta={signedPercent(kpis.weekChangePct)}
+          deltaIcon={kpis.weekChangePct >= 0 ? TrendingUp : TrendingDown}
+          deltaTone={kpis.weekChangePct >= 0 ? "error" : "success"}
           note="vs last week"
         />
         <KpiCard
           label="Feed Cost (month)"
           icon={Banknote}
-          value="$6,240"
-          delta="+4.1%"
+          value={kpis.feedCostLabel}
+          delta={percent(kpis.feedCostShare, 0)}
           deltaIcon={TrendingUp}
-          deltaTone="error"
-          note="38% of total expenses"
+          deltaTone="neutral"
+          note="of total expenses"
         />
       </KpiGrid>
 
@@ -145,9 +209,17 @@ export default function FeedPage() {
         <Card className="flex flex-1 flex-col gap-4 p-4">
           <PanelHead
             title="Feed Consumption Trend"
-            subtitle="Daily consumption in kg · last 14 days"
+            subtitle="Daily consumption in tonnes · last 14 days"
           >
-            <GhostButton icon={ChevronDown}>Last 14 days</GhostButton>
+            <RangeSelect
+              name="days"
+              defaultValue="14"
+              options={[
+                { value: "7", label: "Last 7 days" },
+                { value: "14", label: "Last 14 days" },
+                { value: "30", label: "Last 30 days" },
+              ]}
+            />
           </PanelHead>
           <ChartLegend
             series={[
@@ -179,13 +251,13 @@ export default function FeedPage() {
         <Card className="flex flex-col gap-4 p-4 xl:w-[470px]">
           <PanelHead
             title="Stock by Feed Type"
-            subtitle="4.8 tons on hand"
+            subtitle={`${kpis.stockLabel} on hand`}
           />
           <div className="flex flex-wrap items-center gap-6">
             <Donut
               slices={stockByType}
               size={150}
-              caption="4.8t"
+              caption={`${kpis.stockTonnes.toFixed(1)}t`}
               captionLabel="on hand"
             />
             <DonutLegend slices={stockByType} />
@@ -195,21 +267,43 @@ export default function FeedPage() {
 
       <FilterBar
         placeholder="Search feed item or supplier…"
-        selects={["Type", "Supplier", "Status"]}
+        filters={[
+          {
+            name: "supplier",
+            label: "Supplier",
+            options: suppliers.map((supplier) => ({
+              value: supplier.name,
+              label: supplier.name,
+            })),
+          },
+        ]}
       />
 
       <Card className="flex flex-col">
-        <PanelHead inset title="Feed Inventory" subtitle="Stock valued at $14,280">
-          <GhostButton icon={ShoppingCart}>Reorder selected</GhostButton>
+        <PanelHead
+          inset
+          title="Feed Inventory"
+          subtitle={`Stock valued at ${kpis.stockValueLabel}`}
+        >
+          <InventoryItemDialog
+            suppliers={suppliers}
+            category="feed"
+            label="Add feed item"
+          />
         </PanelHead>
         <DataTable
           columns={columns}
-          rows={feedInventory}
-          rowKey={(row) => row.name}
+          rows={feedInventory.rows}
+          rowKey={(row) => String(row.id)}
         />
-        <TableFooter summary="Showing 6 of 9 feed items">
-          <GhostButton>Previous</GhostButton>
-          <GhostButton>Next</GhostButton>
+        <TableFooter
+          summary={`Showing ${feedInventory.range} of ${kpis.items} feed items`}
+        >
+          <Pager
+            page={feedInventory.page}
+            hasNext={feedInventory.hasNext}
+            hasPrevious={feedInventory.hasPrevious}
+          />
         </TableFooter>
       </Card>
     </>
