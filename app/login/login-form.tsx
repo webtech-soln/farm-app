@@ -3,6 +3,7 @@
 import { useActionState } from "react";
 import {
   ArrowRight,
+  Clock3,
   Check,
   Lock,
   Mail,
@@ -17,7 +18,14 @@ import { IDLE } from "@/lib/actions/types";
  * credential errors from `useActionState` — everything else on the page stays
  * on the server.
  */
-export function LoginForm({ next }: { next?: string }) {
+export function LoginForm({
+  next,
+  expired,
+}: {
+  next?: string;
+  /** Set when the watchdog sent an idle tab back here. */
+  expired?: boolean;
+}) {
   const [state, action, pending] = useActionState(signIn, IDLE);
 
   const fieldError = (name: string) => state.fieldErrors?.[name]?.[0];
@@ -34,6 +42,17 @@ export function LoginForm({ next }: { next?: string }) {
           Welcome back. Enter your details to continue.
         </p>
       </div>
+
+      {expired && state.status !== "error" ? (
+        <p
+          role="status"
+          className="flex items-start gap-2 rounded-nav border border-border-hair bg-bg px-3.5 py-3 text-sm-plus text-ink-2"
+        >
+          <Clock3 className="mt-px size-4 shrink-0 text-ink-3" />
+          Your session ended after an hour of inactivity. Sign in to pick up
+          where you left off.
+        </p>
+      ) : null}
 
       {state.status === "error" && state.message ? (
         <p

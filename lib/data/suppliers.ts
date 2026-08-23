@@ -12,12 +12,13 @@ import {
 } from "@/lib/db/schema";
 
 import {
+  DONUT_COLORS,
+  SUPPLIER_STATUS,
   axis,
+  compactTick,
   count,
   display,
-  DONUT_COLORS,
   money,
-  SUPPLIER_STATUS,
 } from "./common";
 
 /**
@@ -57,8 +58,7 @@ export async function getSpendBySupplier(months = 12, top = 6) {
   }
 
   const values = entries.map((entry) => Math.round(entry.spend / 100));
-  const { max, ticks } = axis(Math.max(...values, 1), 4, (value) =>
-    value >= 1000 ? `${Math.round(value / 1000)}k` : String(Math.round(value)),
+  const { max, ticks } = axis(Math.max(...values, 1), 4, compactTick,
   );
 
   return { labels: entries.map((entry) => entry.name), ticks, max, values };

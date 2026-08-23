@@ -13,8 +13,23 @@ import { can, type Capability } from "./permissions";
 
 export const SESSION_COOKIE = "jf_session";
 
-const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 7; // 7 days
-const SESSION_REFRESH_MS = 1000 * 60 * 60 * 24; // slide when < 6 days remain
+/**
+ * Sessions expire on inactivity, not on a fixed calendar window: `expiresAt`
+ * is an idle deadline that every request pushes forward. Leave a tab alone for
+ * longer than this and the next request — or the client's own watchdog —
+ * lands back on the sign-in page. Override with `SESSION_IDLE_MINUTES`.
+ */
+const IDLE_MINUTES = Number(process.env.SESSION_IDLE_MINUTES ?? 60);
+export const SESSION_IDLE_MS =
+  (Number.isFinite(IDLE_MINUTES) && IDLE_MINUTES > 0 ? IDLE_MINUTES : 60) *
+  60 *
+  1000;
+
+/**
+ * Sliding is throttled so an active tab writes at most once per window rather
+ * than on every request.
+ */
+const SESSION_SLIDE_AFTER_MS = 1000 * 60 * 5; // 5 minutes
 
 /** The session token lives in the cookie; only its digest reaches the table. */
 function digest(token: string) {
@@ -50,7 +65,7 @@ export async function createSession(
   } = {},
 ) {
   const token = randomBytes(32).toString("base64url");
-  const expiresAt = new Date(Date.now() + SESSION_TTL_MS);
+  const expiresAt = new Date(Date.now() + SESSION_IDLE_MS);
 
   await db.insert(sessions).values({
     id: digest(token),
@@ -117,6 +132,16 @@ export const getSession = cache(async (): Promise<SessionUser | null> => {
   const row = rows[0];
   if (!row || !row.isActive) return null;
 
+  // Any request counts as activity, so the idle deadline moves with the
+  // person using the app. The cookie is refreshed separately by the heartbeat,
+  // because a page render cannot write one.
+  if (row.expiresAt.getTime() - Date.now() < SESSION_IDLE_MS - SESSION_SLIDE_AFTER_MS) {
+    await db
+      .update(sessions)
+      .set({ expiresAt: new Date(Date.now() + SESSION_IDLE_MS) })
+      .where(eq(sessions.id, digest(token)));
+  }
+
   return {
     id: row.id,
     name: row.name,
@@ -147,13 +172,14 @@ export async function revokeOtherSessions(userId: number) {
 }
 
 /**
- * Extends a session that is within a day of the sliding window. Safe to call
- * only from Server Actions / Route Handlers since it writes a cookie.
+ * Pushes the idle deadline out and re-issues the cookie with it. Only callable
+ * from a Server Action or Route Handler, since it writes a cookie — the
+ * heartbeat route is what keeps an open tab alive.
  */
-export async function refreshSession() {
+export async function refreshSession(): Promise<{ expiresAt: Date } | null> {
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE)?.value;
-  if (!token) return;
+  if (!token) return null;
 
   const id = digest(token);
   const [row] = await db
@@ -161,13 +187,13 @@ export async function refreshSession() {
     .from(sessions)
     .where(eq(sessions.id, id))
     .limit(1);
-  if (!row) return;
 
-  const remaining = row.expiresAt.getTime() - Date.now();
-  if (remaining <= 0 || remaining > SESSION_TTL_MS - SESSION_REFRESH_MS) return;
+  // An expired row is not revived: the person has to sign in again.
+  if (!row || row.expiresAt.getTime() <= Date.now()) return null;
 
-  const expiresAt = new Date(Date.now() + SESSION_TTL_MS);
+  const expiresAt = new Date(Date.now() + SESSION_IDLE_MS);
   await db.update(sessions).set({ expiresAt }).where(eq(sessions.id, id));
+
   cookieStore.set(SESSION_COOKIE, token, {
     httpOnly: true,
     sameSite: "lax",
@@ -175,6 +201,8 @@ export async function refreshSession() {
     path: "/",
     expires: expiresAt,
   });
+
+  return { expiresAt };
 }
 
 /**
@@ -184,8 +212,13 @@ export async function refreshSession() {
  */
 export async function requireUser(): Promise<SessionUser> {
   const user = await getSession();
-  if (!user) redirect("/login");
-  return user;
+  if (user) return user;
+
+  // A cookie that no longer resolves to a session has to be cleared before the
+  // sign-in page, or the proxy will see it and bounce the request straight
+  // back here. The route handler can delete it; this render cannot.
+  const cookieStore = await cookies();
+  redirect(cookieStore.has(SESSION_COOKIE) ? "/api/session/end" : "/login");
 }
 
 export class AuthorizationError extends Error {

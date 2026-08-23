@@ -39,11 +39,14 @@ import {
 } from "@/lib/db/schema";
 
 import {
+  FLOCK_STATUS,
+  TASK_PRIORITY,
+  axis,
   changePct,
+  compactTick,
   count,
   decimal,
   display,
-  FLOCK_STATUS,
   formatAge,
   formatTime,
   money,
@@ -53,8 +56,6 @@ import {
   relativeTime,
   shortName,
   signedPercent,
-  TASK_PRIORITY,
-  axis,
 } from "./common";
 import { getFarmSettings } from "./settings";
 import { isoDaysAgo, toIsoDate } from "@/lib/date";
@@ -291,9 +292,7 @@ export async function getProductionChart() {
 
   const produced = days.map((day) => collectedByDay.get(day.key) ?? 0);
   const soldSeries = days.map((day) => soldByDay.get(day.key) ?? 0);
-  const { max, ticks } = axis(Math.max(...produced, ...soldSeries, 1), 5, (value) =>
-    value >= 1000 ? `${Math.round(value / 1000)}k` : String(Math.round(value)),
-  );
+  const { max, ticks } = axis(Math.max(...produced, ...soldSeries, 1), 5, compactTick);
 
   return { labels: days.map((day) => day.label), ticks, max, produced, sold: soldSeries };
 }
@@ -332,7 +331,7 @@ export async function getFinanceChart(months = 6) {
   const { max, ticks } = axis(
     Math.max(...revenue, ...expensesSeries, 1),
     4,
-    (value) => (value >= 1000 ? `${Math.round(value / 1000)}k` : String(Math.round(value))),
+    compactTick,
   );
 
   return {
@@ -430,6 +429,11 @@ export async function getHouseOccupancy() {
 }
 
 export type AttentionAlert = {
+  /**
+   * Stable identity for the list. Several rows can raise the same kind of
+   * alert, so the title alone does not identify one.
+   */
+  id: string;
   icon: LucideIcon;
   tone: Tone;
   title: string;
@@ -469,6 +473,7 @@ export async function getAttentionAlerts(): Promise<AttentionAlert[]> {
     const pct =
       ((flock.initialCount - flock.currentCount) / flock.initialCount) * 100;
     alerts.push({
+      id: `mortality-${flock.code}`,
       icon: TriangleAlert,
       tone: "error",
       title: "High Mortality",
@@ -481,7 +486,9 @@ export async function getAttentionAlerts(): Promise<AttentionAlert[]> {
 
   const lowStock = await db
     .select({
+      id: inventoryItems.id,
       name: inventoryItems.name,
+      category: inventoryItems.category,
       quantity: inventoryItems.quantity,
       minStock: inventoryItems.minStock,
       unit: inventoryItems.unit,
@@ -499,18 +506,23 @@ export async function getAttentionAlerts(): Promise<AttentionAlert[]> {
 
   for (const item of lowStock) {
     alerts.push({
+      id: `stock-${item.id}`,
       icon: PackageOpen,
       tone: "warning",
-      title: "Low Feed Stock",
+      // The same check covers medicine and consumables, so only feed is
+      // announced as feed.
+      title: item.category === "feed" ? "Low Feed Stock" : "Low Stock",
       time: relativeTime(item.updatedAt),
       description: `${item.name} is at ${count(item.quantity)} ${item.unit} against a ${count(item.minStock)} ${item.unit} minimum.`,
       action: "Reorder",
-      href: "/inventory",
+      // Lands on the item itself rather than the whole register.
+      href: `/inventory?q=${encodeURIComponent(item.name)}`,
     });
   }
 
   const dueVaccinations = await db
     .select({
+      id: vaccinations.id,
       vaccine: vaccinations.vaccine,
       scheduledOn: vaccinations.scheduledOn,
       flockCode: flocks.code,
@@ -529,13 +541,14 @@ export async function getAttentionAlerts(): Promise<AttentionAlert[]> {
 
   for (const vaccination of dueVaccinations) {
     alerts.push({
+      id: `vaccination-${vaccination.id}`,
       icon: Syringe,
       tone: "info",
       title: "Vaccination Due",
       time: relativeTime(vaccination.createdAt),
       description: `${vaccination.flockCode ?? "All flocks"} ${vaccination.vaccine} scheduled for ${vaccination.scheduledOn}.`,
       action: "Schedule",
-      href: "/vaccinations",
+      href: `/vaccinations?q=${encodeURIComponent(vaccination.vaccine)}`,
     });
   }
 

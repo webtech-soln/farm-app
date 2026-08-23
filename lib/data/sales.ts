@@ -13,12 +13,13 @@ import {
 } from "@/lib/db/schema";
 
 import {
-  axis,
-  display,
   DONUT_COLORS,
-  money,
   ORDER_STATUS,
   PAYMENT_STATUS,
+  axis,
+  compactTick,
+  display,
+  money,
   recentMonths,
 } from "./common";
 
@@ -59,8 +60,7 @@ export async function getSalesTrend(months = 8) {
     return Math.round(average * 1.04);
   });
 
-  const { max, ticks } = axis(Math.max(...revenue, ...target, 1), 4, (value) =>
-    value >= 1000 ? `${Math.round(value / 1000)}k` : String(Math.round(value)),
+  const { max, ticks } = axis(Math.max(...revenue, ...target, 1), 4, compactTick,
   );
 
   return { labels: range.map((entry) => entry.label), ticks, max, revenue, target };

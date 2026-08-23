@@ -174,8 +174,11 @@ function DialogShell({
       }}
       className={cn(
         // Tailwind's preflight zeroes the margin a modal <dialog> relies on to
-        // centre itself, so it is put back explicitly.
-        "m-auto w-[calc(100vw-32px)] rounded-card border border-border-hair bg-card p-0 text-ink shadow-[0_24px_64px_rgba(24,24,27,0.24)] backdrop:bg-ink/40",
+        // centre itself, so it is put back explicitly. `text-left` is just as
+        // deliberate: the element sits in the DOM where it was rendered — often
+        // a right-aligned table cell — and would otherwise inherit its
+        // alignment even while floating in the top layer.
+        "m-auto w-[calc(100vw-32px)] rounded-card border border-border-hair bg-card p-0 text-left text-ink shadow-[0_24px_64px_rgba(24,24,27,0.24)] backdrop:bg-ink/40",
         widths[size],
       )}
     >

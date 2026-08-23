@@ -42,8 +42,8 @@ export function BarChart({
         style={{ height }}
         className="flex flex-col items-end justify-between"
       >
-        {ticks.map((tick) => (
-          <span key={tick} className="text-2xs text-ink-3">
+        {ticks.map((tick, index) => (
+          <span key={index} className="text-2xs text-ink-3">
             {tick}
           </span>
         ))}

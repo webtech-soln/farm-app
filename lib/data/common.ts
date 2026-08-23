@@ -376,17 +376,48 @@ export const CHART_WARNING = "#F59E0B";
 /** Rounds a maximum up to a friendly axis bound and derives evenly spaced ticks. */
 export function axis(max: number, tickCount = 4, format?: (value: number) => string) {
   const safeMax = max <= 0 ? 1 : max;
-  const magnitude = 10 ** Math.floor(Math.log10(safeMax));
-  const bound = Math.ceil(safeMax / magnitude) * magnitude;
-  const step = bound / (tickCount - 1);
+
+  /*
+   * Steps are rounded up to a 1 / 2 / 2.5 / 5 / 10 multiple so the gridlines
+   * land on readable numbers. A raw step would round to the same label twice
+   * — an axis reading "3k, 2k, 2k, 1k, 0" for 3000/2250/1500/750/0.
+   */
+  const rawStep = safeMax / (tickCount - 1);
+  const magnitude = 10 ** Math.floor(Math.log10(rawStep));
+  const normalised = rawStep / magnitude;
+  const niceStep = Math.max(
+    1,
+    magnitude *
+      (normalised <= 1
+        ? 1
+        : normalised <= 2
+          ? 2
+          : normalised <= 2.5
+            ? 2.5
+            : normalised <= 5
+              ? 5
+              : 10),
+  );
+
+  const bound = niceStep * (tickCount - 1);
   const ticks = Array.from({ length: tickCount }, (_, index) => {
-    const value = bound - index * step;
+    const value = bound - index * niceStep;
     return format ? format(value) : count(value);
   });
+
   return { max: bound, ticks };
 }
 
-/** Short month labels for the last `months` calendar months, oldest first. */
+/**
+ * Axis tick label. Keeps one decimal above a thousand — rounding 1,500 to
+ * "2k" both overstates the gridline and can repeat the label above it.
+ */
+export function compactTick(value: number) {
+  if (Math.abs(value) < 1000) return String(Math.round(value));
+  const thousands = value / 1000;
+  return `${Number.isInteger(thousands) ? thousands : thousands.toFixed(1)}k`;
+}
+
 export function recentMonths(months: number) {
   const now = new Date();
   return Array.from({ length: months }, (_, index) => {

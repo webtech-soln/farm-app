@@ -13,13 +13,14 @@ import {
 } from "@/lib/db/schema";
 
 import {
-  axis,
-  display,
   DONUT_COLORS,
-  formatDate,
-  money,
   PAYMENT_METHOD,
   PAYMENT_STATUS,
+  axis,
+  compactTick,
+  display,
+  formatDate,
+  money,
   recentMonths,
 } from "./common";
 
@@ -113,8 +114,7 @@ export async function getRevenueTrend(months = 8) {
   const { max, ticks } = axis(
     Math.max(...invoiced, ...collected, 1),
     4,
-    (value) =>
-      value >= 1000 ? `${Math.round(value / 1000)}k` : String(Math.round(value)),
+    compactTick,
   );
 
   return { labels: range.map((entry) => entry.label), ticks, max, collected, invoiced };

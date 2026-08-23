@@ -52,7 +52,6 @@ export async function signIn(
         values,
       );
     }
-    console.log("Parsed data:", parsed.data);
     const { email, password, next, remember } = parsed.data;
 
     const [account] = await db
@@ -65,7 +64,6 @@ export async function signIn(
       .where(sql`lower(${users.email}) = ${email.toLowerCase()}`)
       .limit(1);
 
-      console.log("Account found:", account);
     if (!account) {
       // Burn comparable time so a missing account is not faster to probe.
       await fakeVerify();

@@ -15,11 +15,12 @@ import {
 } from "@/lib/db/schema";
 
 import {
-  axis,
   COLLECTION_STATUS,
+  DONUT_COLORS,
+  axis,
+  compactTick,
   count,
   display,
-  DONUT_COLORS,
   formatTime,
   humanise,
   percent,
@@ -81,9 +82,7 @@ export async function getEggTrend(days = 14) {
 
   const collected = range.map((entry) => collectedByDay.get(entry.key) ?? 0);
   const sold = range.map((entry) => soldByDay.get(entry.key) ?? 0);
-  const { max, ticks } = axis(Math.max(...collected, ...sold, 1), 4, (value) =>
-    value >= 1000 ? `${Math.round(value / 1000)}k` : String(Math.round(value)),
-  );
+  const { max, ticks } = axis(Math.max(...collected, ...sold, 1), 4, compactTick);
 
   return { labels: range.map((entry) => entry.label), ticks, max, collected, sold };
 }

@@ -1,4 +1,6 @@
 import Link from "next/link";
+
+import { SidebarTrigger } from "./sidebar";
 import {
   Bell,
   CalendarDays,
@@ -20,6 +22,7 @@ export function Topbar({
 }) {
   return (
     <header className="flex h-16 shrink-0 items-center gap-3.5 border-b border-border-hair bg-card px-4 md:px-6">
+      <SidebarTrigger />
       <label className="flex h-9 flex-1 items-center gap-2 rounded-nav border border-border-hair bg-bg px-[11px] lg:max-w-[340px]">
         <Search className="size-4 shrink-0 text-ink-3" />
         <input

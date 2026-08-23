@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Calendar, Plus } from "lucide-react";
 
 import { BarChart, ChartLegend, chartColors } from "@/components/charts/bar-chart";
@@ -287,7 +288,7 @@ export default async function DashboardPage() {
             </div>
             {attentionAlerts.map((alert) => (
               <div
-                key={alert.title}
+                key={alert.id}
                 className="flex items-center gap-3 rounded-[10px] border border-border-soft bg-bg p-3"
               >
                 <IconChip icon={alert.icon} tone={alert.tone} size={32} />
@@ -302,12 +303,12 @@ export default async function DashboardPage() {
                     {alert.description}
                   </p>
                 </div>
-                <button
-                  type="button"
-                  className="shrink-0 rounded-md border border-border-hair bg-card px-2.5 py-[5px] text-xs-plus font-semibold text-violet-deep"
+                <Link
+                  href={alert.href}
+                  className="shrink-0 rounded-md border border-border-hair bg-card px-2.5 py-[5px] text-xs-plus font-semibold text-violet-deep transition-colors hover:border-violet-soft hover:bg-violet-50"
                 >
                   {alert.action}
-                </button>
+                </Link>
               </div>
             ))}
           </Card>

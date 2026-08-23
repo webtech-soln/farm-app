@@ -9,7 +9,7 @@ const stats = [
 ];
 
 export default async function LoginPage({ searchParams }: PageProps<"/login">) {
-  const { next } = await searchParams;
+  const { next, expired } = await searchParams;
 
   return (
     <div className="flex min-h-screen flex-col lg:flex-row">
@@ -59,7 +59,10 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
           <h1 className="text-3xl font-semibold text-link">Jayda Farms</h1>
         </div>
 
-        <LoginForm next={typeof next === "string" ? next : undefined} />
+        <LoginForm
+          next={typeof next === "string" ? next : undefined}
+          expired={expired === "1"}
+        />
       </main>
     </div>
   );

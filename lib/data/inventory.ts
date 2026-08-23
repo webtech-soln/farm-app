@@ -11,12 +11,13 @@ import {
 } from "@/lib/db/schema";
 
 import {
+  DONUT_COLORS,
+  INVENTORY_CATEGORY,
   axis,
+  compactTick,
   count,
   daysBetween,
-  DONUT_COLORS,
   formatDate,
-  INVENTORY_CATEGORY,
   money,
 } from "./common";
 import { getFarmSettings } from "./settings";
@@ -205,8 +206,7 @@ export async function getStockMovement(weeks = 8) {
 
   const stockIn = rows.map((row) => row.stockIn);
   const stockOut = rows.map((row) => row.stockOut);
-  const { max, ticks } = axis(Math.max(...stockIn, ...stockOut, 1), 4, (value) =>
-    value >= 1000 ? `${Math.round(value / 1000)}k` : String(Math.round(value)),
+  const { max, ticks } = axis(Math.max(...stockIn, ...stockOut, 1), 4, compactTick,
   );
 
   return {

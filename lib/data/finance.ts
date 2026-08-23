@@ -7,9 +7,10 @@ import { db } from "@/lib/db";
 import { expenses, inventoryItems, payments, suppliers } from "@/lib/db/schema";
 
 import {
-  axis,
   DONUT_COLORS,
   EXPENSE_CATEGORY,
+  axis,
+  compactTick,
   money,
   recentMonths,
 } from "./common";
@@ -51,10 +52,7 @@ export async function getRevenueVsExpenses(months = 8) {
   );
   const profit = revenue.map((value, index) => value - expense[index]);
 
-  const compact = (value: number) =>
-    Math.abs(value) >= 1000
-      ? `${Math.round(value / 1000)}k`
-      : String(Math.round(value));
+  const compact = compactTick;
   const { max, ticks } = axis(Math.max(...revenue, ...expense, 1), 4, compact);
 
   return {
@@ -69,10 +67,7 @@ export async function getRevenueVsExpenses(months = 8) {
 
 export async function getMonthlyProfit(months = 8) {
   const chart = await getRevenueVsExpenses(months);
-  const compact = (value: number) =>
-    Math.abs(value) >= 1000
-      ? `${Math.round(value / 1000)}k`
-      : String(Math.round(value));
+  const compact = compactTick;
   const { max, ticks } = axis(Math.max(...chart.profit, 1), 4, compact);
 
   return { labels: chart.labels, ticks, max, values: chart.profit };

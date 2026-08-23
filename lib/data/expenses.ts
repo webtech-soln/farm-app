@@ -8,12 +8,13 @@ import { expenses as table, flocks, suppliers, users } from "@/lib/db/schema";
 
 import {
   APPROVAL_STATUS,
-  axis,
-  display,
   EXPENSE_CATEGORY,
+  PAYMENT_METHOD,
+  axis,
+  compactTick,
+  display,
   formatDate,
   money,
-  PAYMENT_METHOD,
   recentMonths,
   shortName,
 } from "./common";
@@ -50,8 +51,7 @@ export async function getExpenseTrend(months = 6) {
   const totals = range.map(
     (_, index) => feed[index] + labour[index] + other[index],
   );
-  const { max, ticks } = axis(Math.max(...totals, 1), 4, (value) =>
-    value >= 1000 ? `${Math.round(value / 1000)}k` : String(Math.round(value)),
+  const { max, ticks } = axis(Math.max(...totals, 1), 4, compactTick,
   );
 
   return { labels: range.map((entry) => entry.label), ticks, max, feed, labour, other };
