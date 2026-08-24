@@ -3,6 +3,9 @@ import { NextResponse, type NextRequest } from "next/server";
 const SESSION_COOKIE = "jf_session";
 const PUBLIC_PATHS = ["/login"];
 
+/** The paths the matcher below lets through, as a test the proxy can apply. */
+const ASSET_PATH = /^\/(?:_next\/static|_next\/image|favicon\.ico)|\.(?:svg|png|jpg|jpeg|gif|webp|ico)$/;
+
 /**
  * Optimistic routing only. The proxy runs before rendering and cannot reach
  * the database, so it just checks whether a session cookie is present and
@@ -15,6 +18,14 @@ export function proxy(request: NextRequest) {
   const isPublic = PUBLIC_PATHS.some(
     (path) => pathname === path || pathname.startsWith(`${path}/`),
   );
+
+  // A Server Action is posted to the path of the page that holds it, so one
+  // aimed at a file — `/favicon.ico`, an image — belongs to no page and cannot
+  // be answered. Left to the framework it throws while trying to render a
+  // route that was never a page, which anyone can trigger without signing in.
+  if (request.headers.has("next-action") && ASSET_PATH.test(pathname)) {
+    return new NextResponse(null, { status: 404 });
+  }
 
   if (!hasSessionCookie && !isPublic) {
     const url = new URL("/login", request.url);
@@ -38,5 +49,11 @@ export const config = {
      * without this the redirect would also swallow CSS and JS requests.
      */
     "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
+    /*
+     * The exclusions above are matched on the path alone, so a Server Action
+     * posted at one of them would never reach this file. Actions carry their
+     * own header, which is enough to pull them back in wherever they land.
+     */
+    { source: "/:path*", has: [{ type: "header", key: "next-action" }] },
   ],
 };

@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { Tone } from "@/components/ui/tone";
+import { CURRENCY_LOCALE, CURRENCY_SYMBOL } from "@/lib/currency";
 import { toIsoDate } from "@/lib/date";
 
 /**
@@ -13,11 +14,15 @@ import { toIsoDate } from "@/lib/date";
 export function money(cents: number, options: { compact?: boolean } = {}) {
   const amount = cents / 100;
   if (options.compact) {
-    if (Math.abs(amount) >= 1_000_000) return `$${(amount / 1_000_000).toFixed(1)}M`;
-    if (Math.abs(amount) >= 1_000) return `$${Math.round(amount / 1_000)}k`;
+    if (Math.abs(amount) >= 1_000_000) {
+      return `${CURRENCY_SYMBOL}${(amount / 1_000_000).toFixed(1)}M`;
+    }
+    if (Math.abs(amount) >= 1_000) {
+      return `${CURRENCY_SYMBOL}${Math.round(amount / 1_000)}k`;
+    }
   }
   const rounded = Number.isInteger(amount) ? amount : Number(amount.toFixed(2));
-  return `$${rounded.toLocaleString("en-US", {
+  return `${CURRENCY_SYMBOL}${rounded.toLocaleString(CURRENCY_LOCALE, {
     minimumFractionDigits: Number.isInteger(rounded) ? 0 : 2,
     maximumFractionDigits: 2,
   })}`;

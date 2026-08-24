@@ -41,9 +41,10 @@ export async function getSalesTrend(months = 8) {
     })
     .from(orders)
     .where(
-      sql`${BOOKED} and ${orders.placedAt} >= date_trunc('month', current_date) - ${sql.raw(
-        `interval '${months - 1} months'`,
-      )}`,
+      // Bound as a parameter, not spliced into the statement — `sql.raw` on a
+      // value that started life in the query string is one refactor away from
+      // being an injection point, and `make_interval` takes it safely.
+      sql`${BOOKED} and ${orders.placedAt} >= date_trunc('month', current_date) - make_interval(months => ${months - 1})`,
     )
     .groupBy(sql`date_trunc('month', ${orders.placedAt})`);
 

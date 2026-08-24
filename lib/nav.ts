@@ -15,7 +15,7 @@ import {
   Menu,
   Package,
   Pill,
-  Receipt,
+  ReceiptText,
   Scale,
   Settings,
   ShoppingCart,
@@ -69,7 +69,7 @@ export const navGroups: NavItem[][] = [
     { label: "Sales Overview", href: "/sales", icon: ShoppingCart },
     { label: "Products", href: "/products", icon: Box },
     { label: "Customers", href: "/customers", icon: Users },
-    { label: "Orders", href: "/orders", icon: Receipt },
+    { label: "Orders", href: "/orders", icon: ReceiptText },
     { label: "Deliveries", href: "/deliveries", icon: MapPin },
   ],
   [

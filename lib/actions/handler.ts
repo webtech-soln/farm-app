@@ -46,8 +46,18 @@ type PostgresError = Error & {
   column?: string;
 };
 
-function isPostgresError(error: unknown): error is PostgresError {
-  return error instanceof Error && typeof (error as PostgresError).code === "string";
+/**
+ * Drizzle wraps every failed query in a `DrizzleQueryError`, which carries none
+ * of the driver's fields itself — the `pg` error, with its code and constraint
+ * name, sits underneath on `cause`. Reading only the thrown value would miss
+ * every database error there is, so walk the chain to the first link that
+ * actually looks like one.
+ */
+function postgresErrorOf(error: unknown): PostgresError | undefined {
+  for (let link = error; link instanceof Error; link = link.cause) {
+    if (typeof (link as PostgresError).code === "string") return link as PostgresError;
+  }
+  return undefined;
 }
 
 /**
@@ -102,10 +112,11 @@ export function toErrorState(
     return errorState(error.message, error.fieldErrors, values);
   }
 
-  if (isPostgresError(error)) {
-    if (error.code === PG_UNIQUE_VIOLATION) {
-      const mapped = error.constraint
-        ? UNIQUE_CONSTRAINT_FIELDS[error.constraint]
+  const postgres = postgresErrorOf(error);
+  if (postgres) {
+    if (postgres.code === PG_UNIQUE_VIOLATION) {
+      const mapped = postgres.constraint
+        ? UNIQUE_CONSTRAINT_FIELDS[postgres.constraint]
         : undefined;
       if (mapped) {
         return errorState(
@@ -117,7 +128,7 @@ export function toErrorState(
       return errorState("That record already exists.", undefined, values);
     }
 
-    if (error.code === PG_FOREIGN_KEY_VIOLATION) {
+    if (postgres.code === PG_FOREIGN_KEY_VIOLATION) {
       return errorState(
         "A linked record is missing or still in use. Refresh and try again.",
         undefined,
@@ -125,15 +136,17 @@ export function toErrorState(
       );
     }
 
-    if (error.code === PG_NOT_NULL_VIOLATION) {
+    if (postgres.code === PG_NOT_NULL_VIOLATION) {
       return errorState(
-        `"${error.column ?? "A required field"}" is required.`,
-        error.column ? { [error.column]: ["This field is required."] } : undefined,
+        `"${postgres.column ?? "A required field"}" is required.`,
+        postgres.column
+          ? { [postgres.column]: ["This field is required."] }
+          : undefined,
         values,
       );
     }
 
-    if (error.code === PG_CHECK_VIOLATION) {
+    if (postgres.code === PG_CHECK_VIOLATION) {
       return errorState("Some values are out of the allowed range.", undefined, values);
     }
   }

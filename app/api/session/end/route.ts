@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
+import { safeNext } from "@/lib/auth/safe-next";
 import { destroySession } from "@/lib/auth/session";
 
 /**
@@ -17,11 +18,11 @@ export async function GET(request: NextRequest) {
   const url = new URL("/login", request.url);
   url.searchParams.set("expired", "1");
 
-  const next = request.nextUrl.searchParams.get("next");
-  // Only same-site paths, so this cannot be used as an open redirect.
-  if (next && next.startsWith("/") && !next.startsWith("//")) {
-    url.searchParams.set("next", next);
-  }
+  // Only same-site paths, so this cannot be used as an open redirect. The
+  // value is carried on to the sign-in form, which redirects to it once the
+  // password is accepted — so an unsafe one has to be dropped here, not later.
+  const next = safeNext(request.nextUrl.searchParams.get("next"), "");
+  if (next) url.searchParams.set("next", next);
 
   return NextResponse.redirect(url);
 }

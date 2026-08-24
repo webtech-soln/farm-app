@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { stripCurrency } from "@/lib/currency";
+
 /**
  * Everything arriving from a `<form>` is a string, so these helpers coerce and
  * bound the value in one place. Messages are written for the person filling in
@@ -59,7 +61,7 @@ export function percentage(label: string) {
 }
 
 /**
- * Money arrives as "1,240.50" or "$1,240.50" and is stored as whole cents.
+ * Money arrives as "1,240.50" or "₵1,240.50" and is stored as whole pesewas.
  * Rounding here keeps a stray third decimal from silently truncating.
  */
 export function moneyCents(
@@ -71,7 +73,17 @@ export function moneyCents(
     .trim()
     .min(1, `${label} is required.`)
     .transform((value, ctx) => {
-      const amount = Number(value.replace(/[$,\s]/g, ""));
+      const cleaned = stripCurrency(value);
+
+      // `Number` would also take "1e3", "0x10" and "Infinity" — none of which
+      // anyone means to type into a money field, and all of which would be
+      // read as an amount nobody entered.
+      if (!/^-?\d*\.?\d+$/.test(cleaned)) {
+        ctx.addIssue({ code: "custom", message: `${label} must be an amount.` });
+        return z.NEVER;
+      }
+
+      const amount = Number(cleaned);
 
       if (!Number.isFinite(amount)) {
         ctx.addIssue({ code: "custom", message: `${label} must be an amount.` });

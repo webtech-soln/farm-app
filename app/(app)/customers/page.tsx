@@ -1,6 +1,6 @@
 import {
   CreditCard,
-  Receipt,
+  ReceiptCent,
   TrendingUp,
   TriangleAlert,
   Upload,
@@ -191,7 +191,7 @@ export default async function CustomersPage({
         />
         <KpiCard
           label="Avg Order Value"
-          icon={Receipt}
+          icon={ReceiptCent}
           value={kpis.averageOrderLabel}
           delta={signedPercent(kpis.averageOrderChangePct)}
           deltaIcon={TrendingUp}

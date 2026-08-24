@@ -35,18 +35,16 @@ export async function getExpenseTrend(months = 6) {
     })
     .from(table)
     .where(
-      sql`${BOOKED} and ${table.expenseDate} >= date_trunc('month', current_date) - ${sql.raw(
-        `interval '${months - 1} months'`,
-      )}`,
+      sql`${BOOKED} and ${table.expenseDate} >= date_trunc('month', current_date) - make_interval(months => ${months - 1})`,
     )
     .groupBy(sql`date_trunc('month', ${table.expenseDate})`);
 
   const byMonth = new Map(rows.map((row) => [row.month, row]));
-  const dollars = (value: number | undefined) => Math.round(Number(value ?? 0) / 100);
+  const cedis = (value: number | undefined) => Math.round(Number(value ?? 0) / 100);
 
-  const feed = range.map((entry) => dollars(byMonth.get(entry.key)?.feed));
-  const labour = range.map((entry) => dollars(byMonth.get(entry.key)?.labour));
-  const other = range.map((entry) => dollars(byMonth.get(entry.key)?.other));
+  const feed = range.map((entry) => cedis(byMonth.get(entry.key)?.feed));
+  const labour = range.map((entry) => cedis(byMonth.get(entry.key)?.labour));
+  const other = range.map((entry) => cedis(byMonth.get(entry.key)?.other));
 
   const totals = range.map(
     (_, index) => feed[index] + labour[index] + other[index],
@@ -81,9 +79,7 @@ export async function getLargestExpenses(
     .from(table)
     .leftJoin(suppliers, eq(suppliers.id, table.supplierId))
     .where(
-      sql`${BOOKED} and ${table.expenseDate} >= date_trunc('month', current_date) - ${sql.raw(
-        `interval '${months - 1} months'`,
-      )}`,
+      sql`${BOOKED} and ${table.expenseDate} >= date_trunc('month', current_date) - make_interval(months => ${months - 1})`,
     )
     .orderBy(desc(table.amountCents))
     .limit(limit);

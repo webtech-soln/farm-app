@@ -17,7 +17,7 @@ import {
 import { todayIso } from "@/lib/date";
 
 const today = todayIso;
-const dollars = (cents: number | undefined | null) =>
+const cedis = (cents: number | undefined | null) =>
   cents === undefined || cents === null ? "" : (cents / 100).toFixed(2);
 
 export type SupplierOption = { id: number; name: string };
@@ -112,7 +112,7 @@ export function ExpenseDialog({
           name="amountCents"
           label="Amount"
           required
-          defaultValue={dollars(expense?.amountCents)}
+          defaultValue={cedis(expense?.amountCents)}
         />
         <SelectField
           name="supplierId"

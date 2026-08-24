@@ -145,6 +145,28 @@ export const saveMortalityRecord = createFormAction({
   handler: async ({ id, ...input }, { user }) => {
     const values = { ...blanksToNull(input), recordedById: user.id };
 
+    // A flock cannot lose more birds than it has. The schema can only bound
+    // the figure in the abstract; the flock is what makes a number wrong, and
+    // an extra digit typed into this field is otherwise saved without comment.
+    const [flock] = await db
+      .select({ code: flocks.code, currentCount: flocks.currentCount })
+      .from(flocks)
+      .where(eq(flocks.id, input.flockId))
+      .limit(1);
+
+    if (!flock) throw new ActionError("That flock no longer exists.");
+
+    if (input.deaths > flock.currentCount) {
+      throw new ActionError(
+        `${flock.code} has ${flock.currentCount.toLocaleString("en-US")} birds.`,
+        {
+          deaths: [
+            `More than the ${flock.currentCount.toLocaleString("en-US")} birds in this flock.`,
+          ],
+        },
+      );
+    }
+
     if (id) {
       const [row] = await db
         .update(mortalityRecords)

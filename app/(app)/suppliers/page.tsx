@@ -189,7 +189,7 @@ export default async function SuppliersPage({
         <Card className="flex flex-1 flex-col gap-4 p-4">
           <PanelHead
             title="Spend by Supplier"
-            subtitle="Last 12 months · $"
+            subtitle="Last 12 months · ₵"
           />
           <BarChart
             labels={spendBySupplier.labels}

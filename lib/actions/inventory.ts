@@ -1,6 +1,6 @@
 "use server";
 
-import { count, eq } from "drizzle-orm";
+import { and, count, eq, gte, sql } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import { inventoryItems, inventoryMovements, suppliers } from "@/lib/db/schema";
@@ -121,6 +121,14 @@ export const archiveInventoryItem = createFormAction({
  * The one place stock quantity changes. `stock_in` and `stock_out` are deltas;
  * `adjustment` is a recount and sets the on-hand figure outright. Movement and
  * balance are written together so a failure cannot leave them disagreeing.
+ *
+ * The new balance is computed by the database from the column's own value
+ * rather than from one this request read a moment earlier. Reading the quantity
+ * into JavaScript and writing back the arithmetic would let two overlapping
+ * issues both pass a check only one of them should, and the store would go on
+ * to hand out stock it does not have — the ledger and the balance disagreeing
+ * for good. The `>=` in the stock-out clause is the check itself, applied by
+ * the same statement that does the subtraction and against the row it locks.
  */
 export const recordStockMovement = createFormAction({
   schema: stockMovementSchema,
@@ -132,7 +140,6 @@ export const recordStockMovement = createFormAction({
         .select({
           id: inventoryItems.id,
           name: inventoryItems.name,
-          quantity: inventoryItems.quantity,
           unit: inventoryItems.unit,
         })
         .from(inventoryItems)
@@ -141,30 +148,17 @@ export const recordStockMovement = createFormAction({
 
       if (!item) throw new ActionError("That item no longer exists.");
 
-      let quantity: number;
-      if (input.type === "stock_in") {
-        quantity = item.quantity + input.quantity;
-      } else if (input.type === "stock_out") {
-        if (input.quantity > item.quantity) {
-          throw new ActionError(
-            `Only ${item.quantity} ${item.unit} of ${item.name} is on hand.`,
-            { quantity: ["More than the quantity in stock."] },
-          );
-        }
-        quantity = item.quantity - input.quantity;
-      } else {
-        quantity = input.quantity;
-      }
+      const quantityExpression =
+        input.type === "stock_in"
+          ? sql`${inventoryItems.quantity} + ${input.quantity}`
+          : input.type === "stock_out"
+            ? sql`${inventoryItems.quantity} - ${input.quantity}`
+            : sql`${input.quantity}`;
 
-      const [movement] = await tx
-        .insert(inventoryMovements)
-        .values({ ...blanksToNull(input), createdById: user.id })
-        .returning({ id: inventoryMovements.id });
-
-      await tx
+      const [balance] = await tx
         .update(inventoryItems)
         .set({
-          quantity,
+          quantity: quantityExpression,
           // A receipt carries the price actually paid, which becomes the
           // item's current unit cost.
           ...(input.type === "stock_in" && input.unitCostCents !== undefined
@@ -172,7 +166,35 @@ export const recordStockMovement = createFormAction({
             : {}),
           updatedAt: new Date(),
         })
-        .where(eq(inventoryItems.id, item.id));
+        .where(
+          input.type === "stock_out"
+            ? and(
+                eq(inventoryItems.id, item.id),
+                gte(inventoryItems.quantity, input.quantity),
+              )
+            : eq(inventoryItems.id, item.id),
+        )
+        .returning({ quantity: inventoryItems.quantity });
+
+      // Only a stock-out can match nothing here, and only for want of stock —
+      // the row itself was found above, inside this same transaction.
+      if (!balance) {
+        const [current] = await tx
+          .select({ quantity: inventoryItems.quantity })
+          .from(inventoryItems)
+          .where(eq(inventoryItems.id, item.id))
+          .limit(1);
+
+        throw new ActionError(
+          `Only ${current?.quantity ?? 0} ${item.unit} of ${item.name} is on hand.`,
+          { quantity: ["More than the quantity in stock."] },
+        );
+      }
+
+      const [movement] = await tx
+        .insert(inventoryMovements)
+        .values({ ...blanksToNull(input), createdById: user.id })
+        .returning({ id: inventoryMovements.id });
 
       const verb =
         input.type === "stock_in"
@@ -182,7 +204,7 @@ export const recordStockMovement = createFormAction({
             : "recounted";
 
       return {
-        message: `${item.name} ${verb}. On hand: ${quantity} ${item.unit}.`,
+        message: `${item.name} ${verb}. On hand: ${balance.quantity} ${item.unit}.`,
         id: movement.id,
       };
     });

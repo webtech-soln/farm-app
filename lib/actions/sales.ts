@@ -2,6 +2,7 @@
 
 import { eq, inArray, sql, sum } from "drizzle-orm";
 
+import { CURRENCY_LOCALE, CURRENCY_SYMBOL } from "@/lib/currency";
 import { db } from "@/lib/db";
 import {
   customers,
@@ -195,6 +196,14 @@ async function buildLines(tx: Tx, lines: { productId: number; quantity: number }
   });
 }
 
+/** Cents as money, for the sentences a rejected payment comes back with. */
+function amountOf(cents: number) {
+  return `${CURRENCY_SYMBOL}${(cents / 100).toLocaleString(CURRENCY_LOCALE, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
 /** Anything already received against the order decides its payment status. */
 async function syncPaymentStatus(tx: Tx, orderId: number, totalCents: number) {
   const [row] = await tx
@@ -331,6 +340,33 @@ export const recordPayment = createFormAction({
         customerId = customerId ?? order.customerId;
         totalCents = order.totalCents;
         reference = order.reference;
+
+        // Anything already received has to be counted before this payment is
+        // allowed to land, or a mistyped amount — 50000 for 500.00 — is taken
+        // silently, marked "paid", and carried into the revenue figures with
+        // nothing to show it was wrong.
+        const [received] = await tx
+          .select({ paid: sum(payments.amountCents) })
+          .from(payments)
+          .where(eq(payments.orderId, order.id));
+
+        const alreadyPaid = Number(received?.paid ?? 0);
+        const outstanding = order.totalCents - alreadyPaid;
+
+        if (input.amountCents > outstanding) {
+          throw new ActionError(
+            outstanding <= 0
+              ? `${order.reference} is already paid in full.`
+              : `${order.reference} has ${amountOf(outstanding)} outstanding.`,
+            {
+              amountCents: [
+                outstanding <= 0
+                  ? "This order has nothing left to pay."
+                  : `More than the ${amountOf(outstanding)} outstanding.`,
+              ],
+            },
+          );
+        }
       }
 
       const [payment] = await tx

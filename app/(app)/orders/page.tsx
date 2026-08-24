@@ -2,7 +2,7 @@ import {
   Banknote,
   CircleCheckBig,
   PackageCheck,
-  Receipt,
+  ReceiptText,
   Truck,
   type LucideIcon,
 } from "lucide-react";
@@ -45,7 +45,7 @@ const eventStyles: Record<OrderEventIcon, { icon: LucideIcon; tone: Tone }> = {
   transit: { icon: Truck, tone: "info" },
   packed: { icon: PackageCheck, tone: "violet" },
   payment: { icon: Banknote, tone: "success" },
-  placed: { icon: Receipt, tone: "violet" },
+  placed: { icon: ReceiptText, tone: "violet" },
 };
 
 function buildColumns(): Column<OrderRow>[] {

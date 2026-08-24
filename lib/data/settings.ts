@@ -1,5 +1,7 @@
 import "server-only";
 
+import { CURRENCY_LABEL } from "@/lib/currency";
+
 import { cache } from "react";
 import { eq } from "drizzle-orm";
 
@@ -54,7 +56,7 @@ const DEFAULTS: Omit<FarmSettings, "id" | "updatedAt"> = {
   cityState: null,
   country: null,
   timezone: null,
-  currency: "USD ($)",
+  currency: CURRENCY_LABEL,
   weightUnit: "Kilograms (kg)",
   temperatureUnit: "Celsius (°C)",
   volumeUnit: "Litres (L)",

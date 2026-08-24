@@ -47,7 +47,7 @@ const CATEGORIES = [
 ];
 
 const today = todayIso;
-const dollars = (cents: number | undefined) =>
+const cedis = (cents: number | undefined) =>
   cents === undefined ? "" : (cents / 100).toFixed(2);
 
 /* -------------------------------------------------------------------------- */
@@ -135,7 +135,7 @@ export function InventoryItemDialog({
           name="unitCostCents"
           label="Unit cost"
           required
-          defaultValue={dollars(item?.unitCostCents)}
+          defaultValue={cedis(item?.unitCostCents)}
         />
         <NumberField
           name="minStock"
@@ -366,7 +366,7 @@ export function SupplierDialog({ supplier }: { supplier?: SupplierValues }) {
         <MoneyField
           name="outstandingCents"
           label="Outstanding balance"
-          defaultValue={dollars(supplier?.outstandingCents)}
+          defaultValue={cedis(supplier?.outstandingCents)}
         />
         <FullWidth>
           <TextAreaField

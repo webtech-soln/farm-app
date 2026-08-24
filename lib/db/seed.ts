@@ -6,6 +6,7 @@
  * as the dashboard and daily records would render empty.
  */
 import { hashPassword } from "../auth/password";
+import { CURRENCY_LABEL } from "../currency";
 
 import { db, pool } from "./index";
 import { toIsoDate } from "../date";
@@ -199,7 +200,7 @@ async function seed() {
     cityState: "Abeokuta, Ogun State",
     country: "Nigeria",
     timezone: "(GMT+1) West Africa",
-    currency: "USD ($)",
+    currency: CURRENCY_LABEL,
     weightUnit: "Kilograms (kg)",
     temperatureUnit: "Celsius (°C)",
     volumeUnit: "Litres (L)",
@@ -1198,7 +1199,7 @@ async function seed() {
     { title: "Order layer feed", detail: "Grower mash below minimum stock", priority: "high", status: "pending", contextLabel: "Inventory", assigneeId: SAMUEL, dueAt: at(0, "14:00"), createdById: AMINA },
     { title: "Record flock weights", detail: "Sample 50 birds per broiler house", priority: "low", status: "pending", contextLabel: "House 01", assigneeId: AMINA, dueAt: at(0, "16:30"), createdById: SAMUEL },
     { title: "Repair House 04 drinker line", detail: "Leak reported during morning round", priority: "medium", status: "pending", contextLabel: "House 04", assigneeId: TUNDE, dueAt: at(-1, "10:00"), createdById: AMINA },
-    { title: "Chase Kola Poultry payment", detail: "$3,420 overdue by 18 days", priority: "high", status: "pending", contextLabel: "Sales", assigneeId: BLESSING, dueAt: at(-1, "12:00"), createdById: SAMUEL },
+    { title: "Chase Kola Poultry payment", detail: "₵3,420 overdue by 18 days", priority: "high", status: "pending", contextLabel: "Sales", assigneeId: BLESSING, dueAt: at(-1, "12:00"), createdById: SAMUEL },
     { title: "Restock egg trays", detail: "Below 1,000 units", priority: "low", status: "pending", contextLabel: "Inventory", assigneeId: GRACE, dueAt: at(-3, "09:00"), createdById: AMINA },
 
     { title: "Vaccinate Flock JF-2026-002", detail: "Gumboro booster · 4,950 doses", priority: "high", status: "in_progress", contextLabel: "House 02", assigneeId: CHIKE, dueAt: at(0, "11:00"), createdById: AMINA },
@@ -1210,7 +1211,7 @@ async function seed() {
     { title: "Submit daily records", detail: "All 6 houses submitted", priority: "medium", status: "completed", contextLabel: "All houses", assigneeId: GRACE, dueAt: at(0, "08:40"), completedAt: at(0, "08:40"), createdById: AMINA },
     { title: "Clean water lines", detail: "House 01 and House 02 flushed", priority: "low", status: "completed", contextLabel: "House 01", assigneeId: TUNDE, dueAt: at(1, "15:00"), completedAt: at(1, "15:20"), createdById: AMINA },
     { title: "Receive feed delivery", detail: "5 tons broiler finisher booked in", priority: "medium", status: "completed", contextLabel: "Inventory", assigneeId: AMINA, dueAt: at(1, "11:00"), completedAt: at(1, "11:30"), createdById: SAMUEL },
-    { title: "Pay VetPro invoice", detail: "$290 settled by card", priority: "low", status: "completed", contextLabel: "Finance", assigneeId: SAMUEL, dueAt: at(6, "12:00"), completedAt: at(6, "12:10"), createdById: SAMUEL },
+    { title: "Pay VetPro invoice", detail: "₵290 settled by card", priority: "low", status: "completed", contextLabel: "Finance", assigneeId: SAMUEL, dueAt: at(6, "12:00"), completedAt: at(6, "12:10"), createdById: SAMUEL },
   ]);
 
   /* -------------------------------------------------------- Notifications */

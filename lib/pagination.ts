@@ -10,9 +10,41 @@ export function param(params: Params, key: string) {
   return text && text.trim() !== "" ? text.trim() : undefined;
 }
 
+/**
+ * Reads a numeric `searchParams` value that will end up in a query — a day
+ * window, a month count, a row id.
+ *
+ * `Number()` alone is not enough on its own: it turns anything unparseable into
+ * `NaN` and `"1e309"` into `Infinity`, and both travel happily through the app
+ * until Postgres refuses them and the whole board 500s. Anything that is not a
+ * real number inside the expected bounds falls back instead.
+ */
+export function numberParam(
+  params: Params,
+  key: string,
+  fallback: number,
+  { min = 1, max = Number.MAX_SAFE_INTEGER, integer = true } = {},
+) {
+  const raw = param(params, key);
+  if (raw === undefined) return fallback;
+
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value < min || value > max) return fallback;
+  return integer ? Math.floor(value) : value;
+}
+
+/**
+ * Far past the end of any real board, but low enough that `page * pageSize`
+ * stays a number Postgres will accept as an OFFSET. Without the ceiling a
+ * `?page=1e308` in the address bar overflows the multiplication to `Infinity`
+ * and the query fails outright.
+ */
+const MAX_PAGE = 100_000;
+
 export function pageParam(params: Params) {
   const page = Number(param(params, "page") ?? 1);
-  return Number.isFinite(page) && page >= 1 ? Math.floor(page) : 1;
+  if (!Number.isFinite(page) || page < 1) return 1;
+  return Math.min(Math.floor(page), MAX_PAGE);
 }
 
 /**

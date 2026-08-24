@@ -44,9 +44,7 @@ export async function getCustomerMix(months = 8) {
       sql`first_order.customer_id = ${orders.customerId}`,
     )
     .where(
-      sql`${orders.placedAt} >= date_trunc('month', current_date) - ${sql.raw(
-        `interval '${months - 1} months'`,
-      )}`,
+      sql`${orders.placedAt} >= date_trunc('month', current_date) - make_interval(months => ${months - 1})`,
     )
     .groupBy(sql`date_trunc('month', ${orders.placedAt})`);
 

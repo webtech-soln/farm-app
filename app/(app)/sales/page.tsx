@@ -2,7 +2,7 @@ import {
   Banknote,
   CalendarDays,
   CreditCard,
-  Receipt,
+  ReceiptText,
   TrendingUp,
   TriangleAlert,
 } from "lucide-react";
@@ -16,7 +16,7 @@ import { Donut, DonutLegend } from "@/components/charts/donut";
 import { ProgressRail } from "@/components/charts/progress-rail";
 import { OrderDialog } from "@/components/dialogs/sales-dialogs";
 import { RangeSelect } from "@/components/ui/range-select";
-import { param } from "@/lib/pagination";
+import { numberParam } from "@/lib/pagination";
 import { PageHeader } from "@/components/layout/page-header";
 import { ExportButton } from "@/components/ui/export-button";
 import { getProductOptions } from "@/lib/data/products";
@@ -78,7 +78,7 @@ export default async function SalesPage({
   searchParams,
 }: PageProps<"/sales">) {
   const params = await searchParams;
-  const months = Number(param(params, "months") ?? 8);
+  const months = numberParam(params, "months", 8, { min: 1, max: 60 });
   const [
     kpis,
     salesTrend,
@@ -140,7 +140,7 @@ export default async function SalesPage({
         />
         <KpiCard
           label="Orders"
-          icon={Receipt}
+          icon={ReceiptText}
           value={count(kpis.ordersThisMonth)}
           delta={
             kpis.ordersChange >= 0
@@ -169,7 +169,7 @@ export default async function SalesPage({
         <Card className="flex flex-1 flex-col gap-4 p-4">
           <PanelHead
             title="Sales Trend"
-            subtitle="Revenue vs target · last 8 months · $ thousands"
+            subtitle="Revenue vs target · last 8 months · ₵ thousands"
           >
             <RangeSelect
               name="months"

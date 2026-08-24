@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/cn";
+import { CURRENCY_SYMBOL } from "@/lib/currency";
 
 import { useFormField } from "./form-context";
 
@@ -198,7 +199,7 @@ export function NumberField(
  * by the `moneyCents` schema helper, so this stays a text input.
  */
 export function MoneyField({
-  currency = "$",
+  currency = CURRENCY_SYMBOL,
   ...props
 }: BaseProps & { currency?: string } & Omit<
     ComponentProps<"input">,

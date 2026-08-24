@@ -15,7 +15,7 @@ import Link from "next/link";
 import { PageHeader } from "@/components/layout/page-header";
 import { FilterBar } from "@/components/ui/filter-bar";
 import { getAssigneeOptions } from "@/lib/data/employees";
-import { param } from "@/lib/pagination";
+import { numberParam, param } from "@/lib/pagination";
 import { Avatar } from "@/components/ui/avatar";
 import { Card } from "@/components/ui/card";
 import {
@@ -33,13 +33,13 @@ export default async function TasksPage({
   searchParams,
 }: PageProps<"/tasks">) {
   const params = await searchParams;
-  const assignee = param(params, "assignee");
+  const assignee = numberParam(params, "assignee", 0, { max: 2_147_483_647 });
   const priority = param(params, "priority");
   const list = param(params, "view") === "list";
 
   const [taskBoard, counts, people, formValues] = await Promise.all([
     getTaskBoard({
-      assigneeId: assignee ? Number(assignee) : undefined,
+      assigneeId: assignee || undefined,
       priority: priority as "high" | "medium" | "low" | undefined,
     }),
     getTaskCounts(),

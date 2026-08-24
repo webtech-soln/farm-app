@@ -6,6 +6,7 @@ import { eq, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { fakeVerify, hashPassword, verifyPassword } from "@/lib/auth/password";
+import { safeNext } from "@/lib/auth/safe-next";
 import {
   createSession,
   destroySession,
@@ -24,12 +25,9 @@ const BAD_CREDENTIALS = "That email and password do not match an account.";
 
 /**
  * Only same-origin paths are honoured, so a crafted `?next=https://evil.test`
- * cannot turn the login form into an open redirect.
+ * cannot turn the login form into an open redirect. See `safeNext` for why the
+ * check is a URL parse rather than a prefix test.
  */
-function safeNext(next: string | null | undefined) {
-  if (!next || !next.startsWith("/") || next.startsWith("//")) return "/";
-  return next;
-}
 
 export async function signIn(
   _previous: ActionState,

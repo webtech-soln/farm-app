@@ -23,7 +23,7 @@ import { getInvoicedByMonth, RECEIVABLES } from "./revenue";
  */
 export async function getRevenueVsExpenses(months = 8) {
   const range = recentMonths(months);
-  const since = sql.raw(`interval '${months - 1} months'`);
+  const since = sql`make_interval(months => ${months - 1})`;
 
   const [revenueByMonth, expenseRows] = await Promise.all([
     getInvoicedByMonth(months),
@@ -43,12 +43,12 @@ export async function getRevenueVsExpenses(months = 8) {
     expenseRows.map((row) => [row.month, Number(row.total)]),
   );
 
-  const dollars = (cents: number) => Math.round(cents / 100);
+  const cedis = (cents: number) => Math.round(cents / 100);
   const revenue = range.map((entry) =>
-    dollars(revenueByMonth.get(entry.key) ?? 0),
+    cedis(revenueByMonth.get(entry.key) ?? 0),
   );
   const expense = range.map((entry) =>
-    dollars(expenseByMonth.get(entry.key) ?? 0),
+    cedis(expenseByMonth.get(entry.key) ?? 0),
   );
   const profit = revenue.map((value, index) => value - expense[index]);
 
@@ -81,9 +81,7 @@ export async function getExpensesByCategory(months = 1) {
     })
     .from(expenses)
     .where(
-      sql`${expenses.status} <> 'rejected' and ${expenses.expenseDate} >= date_trunc('month', current_date) - ${sql.raw(
-        `interval '${months - 1} months'`,
-      )}`,
+      sql`${expenses.status} <> 'rejected' and ${expenses.expenseDate} >= date_trunc('month', current_date) - make_interval(months => ${months - 1})`,
     )
     .groupBy(expenses.category)
     .orderBy(sql`coalesce(sum(${expenses.amountCents}), 0) desc`);

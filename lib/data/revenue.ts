@@ -34,7 +34,7 @@ const BOOKED = sql`${orders.status} <> 'cancelled'`;
  * combined here.
  */
 export async function getInvoicedByMonth(months: number) {
-  const since = sql.raw(`interval '${months - 1} months'`);
+  const since = sql`make_interval(months => ${months - 1})`;
 
   const [orderRows, standaloneRows] = await Promise.all([
     db
@@ -83,7 +83,7 @@ export const RECEIVABLES = sql<number>`(
  */
 export async function getRevenueTrend(months = 8) {
   const range = recentMonths(months);
-  const since = sql.raw(`interval '${months - 1} months'`);
+  const since = sql`make_interval(months => ${months - 1})`;
 
   const [invoicedByMonth, collectedRows] = await Promise.all([
     getInvoicedByMonth(months),
@@ -103,12 +103,12 @@ export async function getRevenueTrend(months = 8) {
     collectedRows.map((row) => [row.month, Number(row.total)]),
   );
 
-  const dollars = (cents: number) => Math.round(cents / 100);
+  const cedis = (cents: number) => Math.round(cents / 100);
   const invoiced = range.map((entry) =>
-    dollars(invoicedByMonth.get(entry.key) ?? 0),
+    cedis(invoicedByMonth.get(entry.key) ?? 0),
   );
   const collected = range.map((entry) =>
-    dollars(collectedByMonth.get(entry.key) ?? 0),
+    cedis(collectedByMonth.get(entry.key) ?? 0),
   );
 
   const { max, ticks } = axis(

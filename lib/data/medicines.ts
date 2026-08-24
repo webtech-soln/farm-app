@@ -45,9 +45,7 @@ export async function getMedicineUsage(months = 6) {
       and(
         eq(inventoryItems.category, "medicine"),
         eq(inventoryMovements.type, "stock_out"),
-        sql`${inventoryMovements.occurredOn} >= date_trunc('month', current_date) - ${sql.raw(
-          `interval '${months - 1} months'`,
-        )}`,
+        sql`${inventoryMovements.occurredOn} >= date_trunc('month', current_date) - make_interval(months => ${months - 1})`,
       ),
     )
     .groupBy(sql`date_trunc('month', ${inventoryMovements.occurredOn})`);

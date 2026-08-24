@@ -100,7 +100,11 @@ export async function getInventoryItems(
   const settings = await getFarmSettings();
   const conditions = [eq(inventoryTable.isActive, true)];
 
-  if (filters.category) conditions.push(eq(inventoryTable.category, filters.category));
+  // Compared as text, so a category that is not one of the enum's labels
+  // simply matches nothing instead of failing the query outright.
+  if (filters.category) {
+    conditions.push(sql`${inventoryTable.category}::text = ${filters.category}`);
+  }
   if (filters.supplier) conditions.push(eq(suppliers.name, filters.supplier));
   if (filters.search) {
     const term = `%${filters.search.toLowerCase()}%`;
@@ -199,7 +203,7 @@ export async function getStockMovement(weeks = 8) {
     })
     .from(inventoryMovements)
     .where(
-      sql`${inventoryMovements.occurredOn} >= date_trunc('week', current_date) - ${sql.raw(`interval '${weeks - 1} weeks'`)}`,
+      sql`${inventoryMovements.occurredOn} >= date_trunc('week', current_date) - make_interval(weeks => ${weeks - 1})`,
     )
     .groupBy(sql`date_trunc('week', ${inventoryMovements.occurredOn})`)
     .orderBy(sql`date_trunc('week', ${inventoryMovements.occurredOn})`);

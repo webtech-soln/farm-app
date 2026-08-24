@@ -206,7 +206,7 @@ export default async function RevenuePage({
         <Card className="flex flex-1 flex-col gap-4 p-4">
           <PanelHead
             title="Revenue Trend"
-            subtitle="Collected vs invoiced · last 8 months · $ thousands"
+            subtitle="Collected vs invoiced · last 8 months · ₵ thousands"
           >
             <ChartLegend series={trendSeries} />
           </PanelHead>

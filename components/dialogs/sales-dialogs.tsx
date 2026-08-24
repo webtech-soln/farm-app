@@ -25,7 +25,7 @@ import {
 import { todayIso } from "@/lib/date";
 
 const today = todayIso;
-const dollars = (cents: number | undefined | null) =>
+const cedis = (cents: number | undefined | null) =>
   cents === undefined || cents === null ? "" : (cents / 100).toFixed(2);
 
 export type CustomerOption = { id: number; name: string };
@@ -94,12 +94,12 @@ export function ProductDialog({ product }: { product?: ProductValues }) {
           name="priceCents"
           label="Selling price"
           required
-          defaultValue={dollars(product?.priceCents)}
+          defaultValue={cedis(product?.priceCents)}
         />
         <MoneyField
           name="costCents"
           label="Unit cost"
-          defaultValue={dollars(product?.costCents)}
+          defaultValue={cedis(product?.costCents)}
         />
         <TextField
           name="unit"
@@ -250,7 +250,7 @@ export function CustomerDialog({ customer }: { customer?: CustomerValues }) {
         <MoneyField
           name="creditLimitCents"
           label="Credit limit"
-          defaultValue={dollars(customer?.creditLimitCents)}
+          defaultValue={cedis(customer?.creditLimitCents)}
         />
         <FullWidth>
           <TextAreaField

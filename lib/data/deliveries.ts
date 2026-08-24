@@ -125,7 +125,11 @@ export async function getDeliveries(
     conditions.push(sql`${table.status}::text = ${filters.status}`);
   }
   if (filters.driver) conditions.push(eq(users.name, filters.driver));
-  if (filters.date) conditions.push(eq(table.scheduledOn, filters.date));
+  // A `date` column will not accept an unparseable string as a parameter, so
+  // the comparison is made in text — the column's own format is `YYYY-MM-DD`.
+  if (filters.date) {
+    conditions.push(sql`${table.scheduledOn}::text = ${filters.date}`);
+  }
   if (filters.search) {
     const term = `%${filters.search.toLowerCase()}%`;
     conditions.push(

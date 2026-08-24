@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
+import { can } from "@/lib/auth/permissions";
 import { getSession } from "@/lib/auth/session";
 import { getCustomers } from "@/lib/data/customers";
 import { getDeliveries } from "@/lib/data/deliveries";
@@ -167,7 +168,16 @@ function toCsv(rows: Row[]) {
 
   const cell = (value: unknown) => {
     if (value === null || value === undefined) return "";
-    const text = String(value);
+    let text = String(value);
+
+    /*
+     * A spreadsheet reads a leading =, +, - or @ as the start of a formula, so
+     * a supplier called "=cmd|..." would run on the machine of whoever opens
+     * the file. Quoting does not help — Excel strips the quotes first — but a
+     * leading apostrophe makes the cell literal text.
+     */
+    if (/^[=+\-@\t\r]/.test(text)) text = `'${text}`;
+
     return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
   };
 
@@ -182,14 +192,23 @@ export async function GET(
   { params }: { params: Promise<{ board: string }> },
 ) {
   // Route handlers sit outside the page tree, so the session is checked here
-  // too rather than relying on the proxy's cookie sniff.
+  // too rather than relying on the proxy's cookie sniff. An export is the same
+  // data the board shows, so it answers to the same capability the board does
+  // — going through `can` rather than settling for "signed in" keeps the file
+  // and the screen in step if those reading rights are ever narrowed.
   const user = await getSession();
   if (!user) {
     return NextResponse.json({ error: "Not signed in." }, { status: 401 });
   }
+  if (!can(user.role, "farm:read")) {
+    return NextResponse.json({ error: "Not permitted." }, { status: 403 });
+  }
 
   const { board } = await params;
-  const load = BOARDS[board];
+  // `BOARDS[board]` alone would find `toString` and the rest of the prototype,
+  // which are truthy and would sail past the guard below as if they were
+  // loaders.
+  const load = Object.hasOwn(BOARDS, board) ? BOARDS[board] : undefined;
   if (!load) {
     return NextResponse.json({ error: "Unknown board." }, { status: 404 });
   }

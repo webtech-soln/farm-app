@@ -215,7 +215,7 @@ export default async function InventoryPage({
         <Card className="flex flex-1 flex-col gap-4 p-4">
           <PanelHead
             title="Stock Movement"
-            subtitle="Value in and out · last 8 weeks · $"
+            subtitle="Value in and out · last 8 weeks · ₵"
           />
           <ChartLegend
             series={[

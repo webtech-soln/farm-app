@@ -44,9 +44,7 @@ export async function getHealthEventsTrend(weeks = 8) {
     })
     .from(healthEventsTable)
     .where(
-      sql`${healthEventsTable.occurredOn} >= date_trunc('week', current_date) - ${sql.raw(
-        `interval '${weeks - 1} weeks'`,
-      )}`,
+      sql`${healthEventsTable.occurredOn} >= date_trunc('week', current_date) - make_interval(weeks => ${weeks - 1})`,
     )
     .groupBy(sql`date_trunc('week', ${healthEventsTable.occurredOn})`)
     .orderBy(sql`date_trunc('week', ${healthEventsTable.occurredOn})`);

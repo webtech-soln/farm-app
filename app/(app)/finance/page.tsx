@@ -4,7 +4,7 @@ import {
   FileMinus,
   Package,
   Percent,
-  Receipt,
+  ReceiptCent,
   TrendingUp,
   Wallet,
   type LucideIcon,
@@ -108,7 +108,7 @@ export default async function FinancePage() {
         />
         <KpiCard
           label="Expenses (month)"
-          icon={Receipt}
+          icon={ReceiptCent}
           value={kpis.expensesLabel}
           delta={signedPercent(kpis.expensesChangePct)}
           deltaIcon={TrendingUp}
@@ -139,7 +139,7 @@ export default async function FinancePage() {
         <Card className="flex flex-1 flex-col gap-4 p-4">
           <PanelHead
             title="Revenue vs Expenses"
-            subtitle="Last 8 months · $ thousands"
+            subtitle="Last 8 months · ₵ thousands"
           >
             <ChartLegend series={compareSeries} />
           </PanelHead>
@@ -174,7 +174,7 @@ export default async function FinancePage() {
         <Card className="flex flex-1 flex-col gap-4 p-4">
           <PanelHead
             title="Monthly Profit"
-            subtitle="Net profit after all costs · $ thousands"
+            subtitle="Net profit after all costs · ₵ thousands"
           >
             <span className="rounded-full bg-violet-50 px-2.5 py-1 text-xs-plus font-semibold text-violet-deep">
               {signedPercent(kpis.profitChangePct)} MoM

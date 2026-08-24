@@ -104,8 +104,12 @@ export default async function VaccinationsPage({
 }: PageProps<"/vaccinations">) {
   const params = await searchParams;
   const window = pageWindow(params);
-  // `?month=YYYY-MM` moves the calendar; without it the current month shows.
-  const monthParam = param(params, "month");
+  // `?month=YYYY-MM` moves the calendar; without it — or with anything that is
+  // not a real month — the current month shows. An unchecked value here reaches
+  // the calendar as an Invalid Date and takes the whole board down with it.
+  const monthParam = /^\d{4}-(0[1-9]|1[0-2])$/.test(param(params, "month") ?? "")
+    ? param(params, "month")!
+    : undefined;
   const reference = monthParam
     ? new Date(Number(monthParam.slice(0, 4)), Number(monthParam.slice(5, 7)) - 1, 1)
     : new Date();

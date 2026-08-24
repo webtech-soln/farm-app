@@ -31,7 +31,7 @@ import { RangeSelect } from "@/components/ui/range-select";
 import { KpiCard, KpiGrid } from "@/components/ui/kpi-card";
 import { toneText } from "@/components/ui/tone";
 import { getSupplierOptions } from "@/lib/data/suppliers";
-import { paginateAll, param } from "@/lib/pagination";
+import { numberParam, paginateAll, param } from "@/lib/pagination";
 import {
   getFeedInventory,
   getFeedKpis,
@@ -122,7 +122,7 @@ export default async function FeedPage({
   searchParams,
 }: PageProps<"/feed">) {
   const params = await searchParams;
-  const days = Number(param(params, "days") ?? 14);
+  const days = numberParam(params, "days", 14, { min: 1, max: 365 });
   const filters = {
     search: param(params, "q"),
     supplier: param(params, "supplier"),

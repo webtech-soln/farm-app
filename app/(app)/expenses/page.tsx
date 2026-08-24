@@ -1,7 +1,7 @@
 import {
   Bird,
   Clock,
-  Receipt,
+  ReceiptCent,
   TrendingDown,
   TrendingUp,
   TriangleAlert,
@@ -153,7 +153,7 @@ export default async function ExpensesPage({
       <KpiGrid>
         <KpiCard
           label="Total (month)"
-          icon={Receipt}
+          icon={ReceiptCent}
           value={kpis.monthLabel}
           delta={signedPercent(kpis.monthChangePct)}
           deltaIcon={kpis.monthChangePct >= 0 ? TrendingUp : TrendingDown}
@@ -194,7 +194,7 @@ export default async function ExpensesPage({
         <Card className="flex flex-1 flex-col gap-4 p-4">
           <PanelHead
             title="Expense Trend by Category"
-            subtitle="Last 6 months · $ thousands"
+            subtitle="Last 6 months · ₵ thousands"
           >
             <ChartLegend series={trendSeries} />
           </PanelHead>

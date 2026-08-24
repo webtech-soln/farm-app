@@ -8,7 +8,7 @@ import {
   HeartPulse,
   Layers,
   PackageOpen,
-  Receipt,
+  ReceiptCent,
   Syringe,
   TrendingDown,
   TrendingUp,
@@ -236,7 +236,7 @@ export async function getDashboardKpis(): Promise<Kpi[]> {
     },
     {
       label: "Expenses",
-      icon: Receipt,
+      icon: ReceiptCent,
       value: money(spend.thisMonth),
       delta: signedPercent(expenseDelta),
       deltaIcon: expenseDelta >= 0 ? TrendingUp : TrendingDown,

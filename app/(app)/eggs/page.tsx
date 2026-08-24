@@ -32,7 +32,7 @@ import {
 } from "@/components/dialogs/record-dialogs";
 import { getFlockOptions } from "@/lib/data/flocks";
 import { getHouseOptions } from "@/lib/data/houses";
-import { pageWindow, paginate, param } from "@/lib/pagination";
+import { numberParam, pageWindow, paginate, param } from "@/lib/pagination";
 import {
   getCollections,
   getEggKpis,
@@ -114,7 +114,7 @@ export default async function EggsPage({
 }: PageProps<"/eggs">) {
   const params = await searchParams;
   const window = pageWindow(params);
-  const days = Number(param(params, "days") ?? 14);
+  const days = numberParam(params, "days", 14, { min: 1, max: 365 });
   const filters = {
     search: param(params, "q"),
     house: param(params, "house"),

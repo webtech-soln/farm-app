@@ -35,9 +35,7 @@ export async function getSpendBySupplier(months = 12, top = 6) {
     .from(expenses)
     .innerJoin(table, eq(table.id, expenses.supplierId))
     .where(
-      sql`${expenses.expenseDate} >= date_trunc('month', current_date) - ${sql.raw(
-        `interval '${months - 1} months'`,
-      )}`,
+      sql`${expenses.expenseDate} >= date_trunc('month', current_date) - make_interval(months => ${months - 1})`,
     )
     .groupBy(table.name)
     .orderBy(desc(sql`sum(${expenses.amountCents})`));
