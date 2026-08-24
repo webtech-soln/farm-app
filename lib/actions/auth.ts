@@ -6,6 +6,12 @@ import { eq, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { fakeVerify, hashPassword, verifyPassword } from "@/lib/auth/password";
+import {
+  checkLoginRate,
+  clearLoginAttempts,
+  recordFailedLogin,
+  throttleMessage,
+} from "@/lib/auth/rate-limit";
 import { safeNext } from "@/lib/auth/safe-next";
 import {
   createSession,
@@ -14,6 +20,7 @@ import {
   revokeOtherSessions,
 } from "@/lib/auth/session";
 import { db } from "@/lib/db";
+import { logger } from "@/lib/observability/logger";
 import { users } from "@/lib/db/schema";
 import { changePasswordSchema, loginSchema } from "@/lib/validation/schemas";
 
@@ -22,12 +29,6 @@ import { errorState, successState, type ActionState } from "./types";
 
 /** Same wording whether the email is unknown or the password is wrong. */
 const BAD_CREDENTIALS = "That email and password do not match an account.";
-
-/**
- * Only same-origin paths are honoured, so a crafted `?next=https://evil.test`
- * cannot turn the login form into an open redirect. See `safeNext` for why the
- * check is a URL parse rather than a prefix test.
- */
 
 export async function signIn(
   _previous: ActionState,
@@ -52,6 +53,17 @@ export async function signIn(
     }
     const { email, password, next, remember } = parsed.data;
 
+    const requestHeaders = await headers();
+    const ipAddress =
+      requestHeaders.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
+
+    // Checked before the password is verified: a throttled attempt should cost
+    // an index lookup, not a full scrypt derivation.
+    const rate = await checkLoginRate(email, ipAddress);
+    if (!rate.allowed) {
+      return errorState(throttleMessage(rate.retryAfterSeconds), undefined, values);
+    }
+
     const [account] = await db
       .select({
         id: users.id,
@@ -65,10 +77,13 @@ export async function signIn(
     if (!account) {
       // Burn comparable time so a missing account is not faster to probe.
       await fakeVerify();
+      await recordFailedLogin(email, ipAddress);
       return errorState(BAD_CREDENTIALS, undefined, values);
     }
 
     if (!(await verifyPassword(password, account.passwordHash))) {
+      await recordFailedLogin(email, ipAddress);
+      logger.warn("Failed sign-in", { email: email.toLowerCase() });
       return errorState(BAD_CREDENTIALS, undefined, values);
     }
 
@@ -80,18 +95,22 @@ export async function signIn(
       );
     }
 
-    const requestHeaders = await headers();
     await createSession(account.id, {
       userAgent: requestHeaders.get("user-agent"),
-      ipAddress:
-        requestHeaders.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
+      ipAddress,
       remember,
     });
+
+    // A correct password clears the account's history, so a person who simply
+    // mistyped is not still throttled on their next visit.
+    await clearLoginAttempts(email);
 
     await db
       .update(users)
       .set({ lastLoginAt: new Date() })
       .where(eq(users.id, account.id));
+
+    logger.info("Signed in", { userId: account.id });
 
     destination = safeNext(next);
   } catch (error) {

@@ -3,6 +3,13 @@ import { NextResponse, type NextRequest } from "next/server";
 const SESSION_COOKIE = "jf_session";
 const PUBLIC_PATHS = ["/login"];
 
+/**
+ * Paths that answer to nobody: no session required, and no bouncing a signed-in
+ * caller away either. The health probe is a load balancer, not a person — it
+ * has no cookie to present and no dashboard to be redirected to.
+ */
+const UNGUARDED_PATHS = ["/api/health"];
+
 /** The paths the matcher below lets through, as a test the proxy can apply. */
 const ASSET_PATH = /^\/(?:_next\/static|_next\/image|favicon\.ico)|\.(?:svg|png|jpg|jpeg|gif|webp|ico)$/;
 
@@ -26,6 +33,8 @@ export function proxy(request: NextRequest) {
   if (request.headers.has("next-action") && ASSET_PATH.test(pathname)) {
     return new NextResponse(null, { status: 404 });
   }
+
+  if (UNGUARDED_PATHS.includes(pathname)) return NextResponse.next();
 
   if (!hasSessionCookie && !isPublic) {
     const url = new URL("/login", request.url);

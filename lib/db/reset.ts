@@ -32,6 +32,7 @@ export const TABLES = [
   "flocks",
   "houses",
   "farm_settings",
+  "login_attempts",
   "sessions",
   "users",
 ] as const;

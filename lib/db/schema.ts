@@ -1079,6 +1079,35 @@ export const sessionsRelations = relations(sessions, ({ one }) => ({
   user: one(users, { fields: [sessions.userId], references: [users.id] }),
 }));
 
+/**
+ * Every sign-in attempt that failed, kept just long enough to throttle on.
+ *
+ * In the database rather than in memory on purpose: an in-process counter
+ * forgets everything on deploy, and stops working the moment a second instance
+ * exists — both of which are exactly when someone would be grinding at the
+ * form. `identifier` is the IP or the lowercased email, so the two can be
+ * limited independently.
+ */
+export const loginAttempts = pgTable(
+  "login_attempts",
+  {
+    id: serial("id").primaryKey(),
+    identifier: varchar("identifier", { length: 320 }).notNull(),
+    kind: varchar("kind", { length: 16 }).notNull(),
+    attemptedAt: timestamp("attempted_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("login_attempts_lookup_idx").on(
+      table.identifier,
+      table.kind,
+      table.attemptedAt,
+    ),
+    index("login_attempts_attempted_idx").on(table.attemptedAt),
+  ],
+);
+
 export const housesRelations = relations(houses, ({ many }) => ({
   flocks: many(flocks),
   dailyRecords: many(dailyRecords),

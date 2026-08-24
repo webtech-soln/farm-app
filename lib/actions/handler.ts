@@ -10,6 +10,7 @@ import {
   type SessionUser,
 } from "@/lib/auth/session";
 import type { Capability } from "@/lib/auth/permissions";
+import { reportError } from "@/lib/observability/logger";
 
 import {
   errorState,
@@ -151,8 +152,10 @@ export function toErrorState(
     }
   }
 
-  // Anything unexpected is logged server-side and generalised for the client.
-  console.error("[action] unhandled error:", error);
+  // Anything unexpected is reported server-side and generalised for the client.
+  reportError("Unhandled error in a Server Action", error, {
+    fields: values ? Object.keys(values) : undefined,
+  });
   return errorState(
     "Something went wrong while saving. Please try again.",
     undefined,

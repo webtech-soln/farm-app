@@ -83,14 +83,32 @@ export function moneyCents(
         return z.NEVER;
       }
 
-      const amount = Number(cleaned);
-
-      if (!Number.isFinite(amount)) {
+      /*
+       * Converted digit by digit rather than as `Math.round(amount * 100)`.
+       * Scaling a float loses the very case this is meant to catch: 1.005
+       * becomes 100.49999999999999 and rounds down to 100, silently dropping
+       * the pesewa the comment above promises to keep.
+       */
+      const parts = /^(-?)(\d*)(?:\.(\d+))?$/.exec(cleaned);
+      if (!parts) {
         ctx.addIssue({ code: "custom", message: `${label} must be an amount.` });
         return z.NEVER;
       }
 
-      const cents = Math.round(amount * 100);
+      const [, sign, whole, fraction = ""] = parts;
+      // A third digit is kept only to decide the rounding of the second.
+      const digits = `${fraction}000`.slice(0, 3);
+      const magnitude =
+        Number(whole || "0") * 100 +
+        Number(digits.slice(0, 2)) +
+        (Number(digits[2]) >= 5 ? 1 : 0);
+
+      if (!Number.isSafeInteger(magnitude)) {
+        ctx.addIssue({ code: "custom", message: `${label} is too large.` });
+        return z.NEVER;
+      }
+
+      const cents = sign === "-" ? -magnitude : magnitude;
       if (cents < min) {
         ctx.addIssue({
           code: "custom",

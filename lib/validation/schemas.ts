@@ -42,16 +42,19 @@ export const loginSchema = z.object({
   next: optionalText(200),
 });
 
+/** The one password policy, so every place that sets one agrees on it. */
+export const strongPassword = z
+  .string()
+  .min(10, "Use at least 10 characters.")
+  .max(200, "Password is too long.")
+  .regex(/[a-z]/, "Include at least one lowercase letter.")
+  .regex(/[A-Z]/, "Include at least one uppercase letter.")
+  .regex(/\d/, "Include at least one number.");
+
 export const changePasswordSchema = z
   .object({
     currentPassword: z.string().min(1, "Enter your current password."),
-    newPassword: z
-      .string()
-      .min(10, "Use at least 10 characters.")
-      .max(200, "Password is too long.")
-      .regex(/[a-z]/, "Include at least one lowercase letter.")
-      .regex(/[A-Z]/, "Include at least one uppercase letter.")
-      .regex(/\d/, "Include at least one number."),
+    newPassword: strongPassword,
     confirmPassword: z.string().min(1, "Confirm the new password."),
   })
   .refine((data) => data.newPassword === data.confirmPassword, {
@@ -526,15 +529,14 @@ export const userSchema = z
     attendancePct: percentage("Attendance").optional(),
     isContractor: checkbox,
     isActive: checkbox.default(true),
-    /** Only required when creating an account that can sign in. */
+    /**
+     * Only required when creating an account that can sign in. Held to the
+     * same rules as `changePasswordSchema` — an initial password an owner sets
+     * for someone else is the one most likely to be weak and to go unchanged,
+     * so it is the last place to relax the policy.
+     */
     password: z
-      .union([
-        z
-          .string()
-          .min(10, "Use at least 10 characters.")
-          .max(200, "Password is too long."),
-        z.literal(""),
-      ])
+      .union([strongPassword, z.literal("")])
       .optional()
       .transform((value) => (value ? value : null)),
   })

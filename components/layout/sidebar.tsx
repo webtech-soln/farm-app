@@ -89,7 +89,12 @@ export function SidebarTrigger() {
  */
 export function Sidebar(props: SidebarProps) {
   return (
-    <aside className="hidden shrink-0 flex-col border-r border-border-hair bg-card md:flex md:w-[68px] xl:w-[248px]">
+    // Pinned to the viewport rather than growing with the page. The nav inside
+    // already scrolls on its own, but `flex-1` needs a bounded height to push
+    // against — without one the rail stretches to the full page and the last
+    // few sections, along with the sign-out button, sit below the fold on a
+    // laptop with no way to reach them but scrolling the whole board.
+    <aside className="sticky top-0 hidden h-screen shrink-0 flex-col border-r border-border-hair bg-card md:flex md:w-[68px] xl:w-[248px]">
       <SidebarContent {...props} />
     </aside>
   );

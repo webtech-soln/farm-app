@@ -1,6 +1,6 @@
 import "server-only";
 
-import { createHash, randomBytes } from "node:crypto";
+import { createHmac, randomBytes } from "node:crypto";
 import { cache } from "react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
@@ -31,9 +31,40 @@ export const SESSION_IDLE_MS =
  */
 const SESSION_SLIDE_AFTER_MS = 1000 * 60 * 5; // 5 minutes
 
-/** The session token lives in the cookie; only its digest reaches the table. */
+/**
+ * The key the session digest is derived under.
+ *
+ * Required in production and never defaulted there: a fallback secret is one
+ * that ships, and a shipped secret is no secret. Development gets a fixed
+ * stand-in so a fresh checkout runs, at the cost of tokens that do not survive
+ * a change of environment — which is the correct trade for a dev machine.
+ */
+function sessionSecret() {
+  const secret = process.env.SESSION_SECRET;
+
+  if (secret && secret.length >= 32) return secret;
+
+  if (process.env.NODE_ENV === "production") {
+    throw new Error(
+      "SESSION_SECRET must be set to at least 32 characters in production. " +
+        'Generate one with: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"',
+    );
+  }
+
+  return "development-only-session-secret-do-not-ship";
+}
+
+/**
+ * The session token lives in the cookie; only its digest reaches the table.
+ *
+ * Keyed with the application secret rather than hashed bare. The tokens are
+ * 256 bits of randomness, so a plain digest was not itself weak — but an
+ * unkeyed one means anyone who reads the `sessions` table off a backup, a log
+ * or a replica can verify a guessed token offline. With the key held only by
+ * the application, the table alone is inert.
+ */
 function digest(token: string) {
-  return createHash("sha256").update(token).digest("hex");
+  return createHmac("sha256", sessionSecret()).update(token).digest("hex");
 }
 
 export type SessionUser = Pick<
