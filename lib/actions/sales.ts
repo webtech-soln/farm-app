@@ -1,7 +1,8 @@
 "use server";
 
-import { eq, inArray, sql, sum } from "drizzle-orm";
+import { and, eq, inArray, sql, sum } from "drizzle-orm";
 
+import { can } from "@/lib/auth/permissions";
 import { CURRENCY_LOCALE, CURRENCY_SYMBOL } from "@/lib/currency";
 import { db } from "@/lib/db";
 import {
@@ -433,10 +434,20 @@ export const saveDelivery = createFormAction({
  */
 export const setDeliveryStatus = createFormAction({
   schema: deliveryStatusSchema,
-  capability: "sales:write",
+  // Narrower than `sales:write`: closing off a run is the driver's job, while
+  // raising or re-routing one stays with Sales.
+  capability: "deliveries:write",
   revalidate: [...DELIVERY_PATHS, "/"],
   handler: async ({ id, status, notes }, { user }) => {
     return db.transaction(async (tx) => {
+      /*
+       * A driver holds `deliveries:write` for their own run sheet, not for the
+       * whole fleet's. Roles that can schedule deliveries in the first place —
+       * Sales, and above — may update any of them; a driver is held to the
+       * drops assigned to them, which the capability alone cannot express.
+       */
+      const ownRunOnly = !can(user.role, "sales:write");
+
       const [delivery] = await tx
         .update(deliveries)
         .set({
@@ -445,11 +456,29 @@ export const setDeliveryStatus = createFormAction({
           ...(status === "failed" ? { attempts: sql`${deliveries.attempts} + 1` } : {}),
           updatedAt: new Date(),
         })
-        .where(eq(deliveries.id, id))
+        .where(
+          ownRunOnly
+            ? and(eq(deliveries.id, id), eq(deliveries.driverId, user.id))
+            : eq(deliveries.id, id),
+        )
         .returning({
           orderId: deliveries.orderId,
           destination: deliveries.destination,
         });
+
+      if (!delivery && ownRunOnly) {
+        // Distinguishing "gone" from "not yours" would confirm the existence
+        // of another driver's run, so both answer the same way.
+        const [exists] = await tx
+          .select({ id: deliveries.id })
+          .from(deliveries)
+          .where(eq(deliveries.id, id))
+          .limit(1);
+
+        if (exists) {
+          throw new ActionError("That delivery is assigned to another driver.");
+        }
+      }
 
       if (!delivery) throw new ActionError("That delivery no longer exists.");
 

@@ -42,6 +42,7 @@ import {
   type RecentOrderRow,
 } from "@/lib/data/sales";
 import { count, money, signedPercent } from "@/lib/format";
+import { requirePageAccess } from "@/lib/auth/route-access";
 
 const columns: Column<RecentOrderRow>[] = [
   {
@@ -77,6 +78,8 @@ const columns: Column<RecentOrderRow>[] = [
 export default async function SalesPage({
   searchParams,
 }: PageProps<"/sales">) {
+  await requirePageAccess("sales:read");
+
   const params = await searchParams;
   const months = numberParam(params, "months", 8, { min: 1, max: 60 });
   const [

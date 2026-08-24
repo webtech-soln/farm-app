@@ -39,6 +39,7 @@ import {
   type GeneratedReportRow,
   type ReportIcon,
 } from "@/lib/data/reports";
+import { requirePageAccess } from "@/lib/auth/route-access";
 
 const reportIcons: Record<ReportIcon, LucideIcon> = {
   "chart-column": ChartColumn,
@@ -105,6 +106,8 @@ const columns: Column<GeneratedReportRow>[] = [
 export default async function ReportsPage({
   searchParams,
 }: PageProps<"/reports">) {
+  await requirePageAccess("reports:read");
+
   const params = await searchParams;
   const window = pageWindow(params);
   const origin = param(params, "origin");

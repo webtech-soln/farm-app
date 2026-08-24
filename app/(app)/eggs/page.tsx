@@ -42,6 +42,7 @@ import {
   type Collection,
 } from "@/lib/data/eggs";
 import { count, percent, signedPercent } from "@/lib/format";
+import { requirePageAccess } from "@/lib/auth/route-access";
 
 const columns: Column<Collection>[] = [
   {
@@ -112,6 +113,8 @@ const columns: Column<Collection>[] = [
 export default async function EggsPage({
   searchParams,
 }: PageProps<"/eggs">) {
+  await requirePageAccess("records:read");
+
   const params = await searchParams;
   const window = pageWindow(params);
   const days = numberParam(params, "days", 14, { min: 1, max: 365 });

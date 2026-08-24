@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-import { can } from "@/lib/auth/permissions";
+import { can, type Capability } from "@/lib/auth/permissions";
 import { getSession } from "@/lib/auth/session";
 import { getCustomers } from "@/lib/data/customers";
 import { getDeliveries } from "@/lib/data/deliveries";
@@ -156,6 +156,34 @@ const BOARDS: Record<string, (search: URLSearchParams) => Promise<Row[]>> = {
     }),
 };
 
+/**
+ * Which capability each export answers to — the same sectors the boards use.
+ *
+ * An export is the board's data in a file, so it has to be gated as tightly as
+ * the board. Checking only "is signed in" would leave a download that hands a
+ * driver the payroll a redirect just stopped them reading.
+ */
+const BOARD_CAPABILITY: Record<keyof typeof BOARDS, Capability> = {
+  flocks: "farm:read",
+  houses: "farm:read",
+  mortality: "records:read",
+  weight: "records:read",
+  eggs: "records:read",
+  feed: "records:read",
+  health: "health:read",
+  vaccinations: "health:read",
+  medicines: "health:read",
+  inventory: "inventory:read",
+  suppliers: "inventory:read",
+  products: "sales:read",
+  customers: "sales:read",
+  orders: "sales:read",
+  deliveries: "deliveries:read",
+  revenue: "finance:read",
+  expenses: "finance:read",
+  employees: "people:read",
+};
+
 /** Presentation-only fields that would be noise in a spreadsheet. */
 const SKIP = /(Tone|Dot|Icon|Alert|Key|href|initials)$/i;
 
@@ -200,10 +228,6 @@ export async function GET(
   if (!user) {
     return NextResponse.json({ error: "Not signed in." }, { status: 401 });
   }
-  if (!can(user.role, "farm:read")) {
-    return NextResponse.json({ error: "Not permitted." }, { status: 403 });
-  }
-
   const { board } = await params;
   // `BOARDS[board]` alone would find `toString` and the rest of the prototype,
   // which are truthy and would sail past the guard below as if they were
@@ -211,6 +235,11 @@ export async function GET(
   const load = Object.hasOwn(BOARDS, board) ? BOARDS[board] : undefined;
   if (!load) {
     return NextResponse.json({ error: "Unknown board." }, { status: 404 });
+  }
+
+  const capability = BOARD_CAPABILITY[board as keyof typeof BOARDS];
+  if (!capability || !can(user.role, capability)) {
+    return NextResponse.json({ error: "Not permitted." }, { status: 403 });
   }
 
   const rows = await load(request.nextUrl.searchParams);

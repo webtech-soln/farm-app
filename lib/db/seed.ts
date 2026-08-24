@@ -178,14 +178,32 @@ async function seed() {
     staff.map((person) => [person.name, person.id]),
   ) as Record<string, number>;
 
-  const SAMUEL = byName["Samuel Adeyemi"];
-  const AMINA = byName["Amina Okoro"];
-  const TUNDE = byName["Tunde Bello"];
-  const CHIKE = byName["Dr. Chike Eze"];
-  const GRACE = byName["Grace Amadi"];
-  const MUSA = byName["Musa Danjuma"];
-  const BLESSING = byName["Blessing Ojo"];
-  const IFEANYI = byName["Ifeanyi Nwosu"];
+  /**
+   * Looked up by name, so a typo or a rename stops the seed here rather than
+   * quietly handing `undefined` to every row that referenced the person. Most
+   * of the columns these ids land in are nullable, so a missing name does not
+   * fail — it writes NULL attribution across hundreds of records and only
+   * surfaces at the one NOT NULL column, hundreds of lines later.
+   */
+  const person = (name: string) => {
+    const id = byName[name];
+    if (id === undefined) {
+      throw new Error(
+        `Seed refers to "${name}", who is not in the staff list. ` +
+          `Known: ${Object.keys(byName).join(", ")}`,
+      );
+    }
+    return id;
+  };
+
+  const JOHNSON = person("Johnson Adjei");
+  const AMINA = person("Amina Okoro");
+  const TUNDE = person("Tunde Bello");
+  const CHIKE = person("Dr. Chike Eze");
+  const GRACE = person("Grace Amadi");
+  const MUSA = person("Musa Danjuma");
+  const BLESSING = person("Blessing Ojo");
+  const IFEANYI = person("Ifeanyi Nwosu");
 
   console.log(`Seeded ${staff.length} users.`);
 
@@ -195,10 +213,10 @@ async function seed() {
     id: 1,
     farmName: "Jayda Farms",
     registeredName: "Jayda Agro Ventures Ltd",
-    estateName: "Ogun Estate",
-    address: "Km 12 Abeokuta–Sagamu Road",
-    cityState: "Abeokuta, Ogun State",
-    country: "Nigeria",
+    estateName: "Kumasi Estate",
+    address: "Km 12 Kumasi - Accra Road",
+    cityState: "Kumasi, Ashanti Region",
+    country: "Ghana",
     timezone: "(GMT+1) West Africa",
     currency: CURRENCY_LABEL,
     weightUnit: "Kilograms (kg)",
@@ -1029,7 +1047,7 @@ async function seed() {
         title: "Order placed",
         description: "Created by Samuel Adeyemi.",
         occurredAt: at(seedOrder.offset, seedOrder.time),
-        createdById: SAMUEL,
+        createdById: JOHNSON,
       },
     ];
 
@@ -1101,9 +1119,9 @@ async function seed() {
   /* ------------------------------------------------------------- Expenses */
 
   const headlineExpenses = [
-    { offset: 0, description: "Broiler finisher feed · 5 tons", category: "feed" as const, amountCents: 324_000, supplier: "Amo Feeds Ltd", method: "bank_transfer" as const, status: "approved" as const, by: SAMUEL },
+    { offset: 0, description: "Broiler finisher feed · 5 tons", category: "feed" as const, amountCents: 324_000, supplier: "Amo Feeds Ltd", method: "bank_transfer" as const, status: "approved" as const, by: JOHNSON },
     { offset: 1, description: "Layer mash · 3.6 tons", category: "feed" as const, amountCents: 211_000, supplier: "Hybrid Nutrition", method: "bank_transfer" as const, status: "approved" as const, by: GRACE },
-    { offset: 4, description: "Monthly payroll · 12 staff", category: "labour" as const, amountCents: 198_000, supplier: null, method: "bank_transfer" as const, status: "approved" as const, by: SAMUEL },
+    { offset: 4, description: "Monthly payroll · 12 staff", category: "labour" as const, amountCents: 198_000, supplier: null, method: "bank_transfer" as const, status: "approved" as const, by: JOHNSON },
     { offset: 5, description: "Diesel for generators", category: "utilities" as const, amountCents: 68_000, supplier: "Ogun Power", method: "cash" as const, status: "pending" as const, by: TUNDE },
     { offset: 6, description: "Newcastle vaccine · 20 vials", category: "medicine" as const, amountCents: 29_000, supplier: "VetPro Nigeria", method: "card" as const, status: "approved" as const, by: CHIKE },
     { offset: 7, description: "Delivery van maintenance", category: "transport" as const, amountCents: 42_000, supplier: "AutoFix Ogun", method: "cash" as const, status: "pending" as const, by: AMINA },
@@ -1123,9 +1141,9 @@ async function seed() {
   const historicalExpenses = monthlyFeed.flatMap((feedAmount, index) => {
     const offsetMonths = 5 - index;
     return [
-      { expenseDate: monthStart(offsetMonths), description: "Monthly feed purchases", category: "feed" as const, amountCents: feedAmount, supplierId: S["Amo Feeds Ltd"], method: "bank_transfer" as const, status: "approved" as const, recordedById: SAMUEL },
-      { expenseDate: monthStart(offsetMonths), description: "Monthly payroll", category: "labour" as const, amountCents: monthlyLabour[index], supplierId: null, method: "bank_transfer" as const, status: "approved" as const, recordedById: SAMUEL },
-      { expenseDate: monthStart(offsetMonths), description: "Utilities, medicine and transport", category: "other" as const, amountCents: monthlyOther[index], supplierId: null, method: "bank_transfer" as const, status: "approved" as const, recordedById: SAMUEL },
+      { expenseDate: monthStart(offsetMonths), description: "Monthly feed purchases", category: "feed" as const, amountCents: feedAmount, supplierId: S["Amo Feeds Ltd"], method: "bank_transfer" as const, status: "approved" as const, recordedById: JOHNSON },
+      { expenseDate: monthStart(offsetMonths), description: "Monthly payroll", category: "labour" as const, amountCents: monthlyLabour[index], supplierId: null, method: "bank_transfer" as const, status: "approved" as const, recordedById: JOHNSON },
+      { expenseDate: monthStart(offsetMonths), description: "Utilities, medicine and transport", category: "other" as const, amountCents: monthlyOther[index], supplierId: null, method: "bank_transfer" as const, status: "approved" as const, recordedById: JOHNSON },
     ];
   });
 
@@ -1153,7 +1171,7 @@ async function seed() {
       supplierId: null,
       method: "bank_transfer" as const,
       status: "approved" as const,
-      recordedById: SAMUEL,
+      recordedById: JOHNSON,
     },
   ]);
 
@@ -1196,49 +1214,49 @@ async function seed() {
   /* ---------------------------------------------------------------- Tasks */
 
   await db.insert(tasks).values([
-    { title: "Order layer feed", detail: "Grower mash below minimum stock", priority: "high", status: "pending", contextLabel: "Inventory", assigneeId: SAMUEL, dueAt: at(0, "14:00"), createdById: AMINA },
-    { title: "Record flock weights", detail: "Sample 50 birds per broiler house", priority: "low", status: "pending", contextLabel: "House 01", assigneeId: AMINA, dueAt: at(0, "16:30"), createdById: SAMUEL },
+    { title: "Order layer feed", detail: "Grower mash below minimum stock", priority: "high", status: "pending", contextLabel: "Inventory", assigneeId: JOHNSON, dueAt: at(0, "14:00"), createdById: AMINA },
+    { title: "Record flock weights", detail: "Sample 50 birds per broiler house", priority: "low", status: "pending", contextLabel: "House 01", assigneeId: AMINA, dueAt: at(0, "16:30"), createdById: JOHNSON },
     { title: "Repair House 04 drinker line", detail: "Leak reported during morning round", priority: "medium", status: "pending", contextLabel: "House 04", assigneeId: TUNDE, dueAt: at(-1, "10:00"), createdById: AMINA },
-    { title: "Chase Kola Poultry payment", detail: "₵3,420 overdue by 18 days", priority: "high", status: "pending", contextLabel: "Sales", assigneeId: BLESSING, dueAt: at(-1, "12:00"), createdById: SAMUEL },
+    { title: "Chase Kola Poultry payment", detail: "₵3,420 overdue by 18 days", priority: "high", status: "pending", contextLabel: "Sales", assigneeId: BLESSING, dueAt: at(-1, "12:00"), createdById: JOHNSON },
     { title: "Restock egg trays", detail: "Below 1,000 units", priority: "low", status: "pending", contextLabel: "Inventory", assigneeId: GRACE, dueAt: at(-3, "09:00"), createdById: AMINA },
 
     { title: "Vaccinate Flock JF-2026-002", detail: "Gumboro booster · 4,950 doses", priority: "high", status: "in_progress", contextLabel: "House 02", assigneeId: CHIKE, dueAt: at(0, "11:00"), createdById: AMINA },
-    { title: "Investigate House 03 mortality", detail: "9 deaths in 24h · awaiting diagnosis", priority: "high", status: "in_progress", contextLabel: "House 03", assigneeId: CHIKE, dueAt: at(0, "15:00"), createdById: SAMUEL },
+    { title: "Investigate House 03 mortality", detail: "9 deaths in 24h · awaiting diagnosis", priority: "high", status: "in_progress", contextLabel: "House 03", assigneeId: CHIKE, dueAt: at(0, "15:00"), createdById: JOHNSON },
     { title: "Deliver order #ORD-2840", detail: "Ikeja, Lagos · 40 kg", priority: "medium", status: "in_progress", contextLabel: "Logistics", assigneeId: MUSA, dueAt: at(0, "16:00"), createdById: BLESSING },
 
     { title: "Record morning egg production", detail: "18,420 eggs across 2 layer houses", priority: "low", status: "completed", contextLabel: "House 03", assigneeId: AMINA, dueAt: at(0, "07:12"), completedAt: at(0, "07:12"), createdById: AMINA },
     { title: "Inspect House 03 ventilation", detail: "Level raised to 3 after heat spike", priority: "high", status: "completed", contextLabel: "House 03", assigneeId: TUNDE, dueAt: at(0, "09:30"), completedAt: at(0, "09:30"), createdById: AMINA },
     { title: "Submit daily records", detail: "All 6 houses submitted", priority: "medium", status: "completed", contextLabel: "All houses", assigneeId: GRACE, dueAt: at(0, "08:40"), completedAt: at(0, "08:40"), createdById: AMINA },
     { title: "Clean water lines", detail: "House 01 and House 02 flushed", priority: "low", status: "completed", contextLabel: "House 01", assigneeId: TUNDE, dueAt: at(1, "15:00"), completedAt: at(1, "15:20"), createdById: AMINA },
-    { title: "Receive feed delivery", detail: "5 tons broiler finisher booked in", priority: "medium", status: "completed", contextLabel: "Inventory", assigneeId: AMINA, dueAt: at(1, "11:00"), completedAt: at(1, "11:30"), createdById: SAMUEL },
-    { title: "Pay VetPro invoice", detail: "₵290 settled by card", priority: "low", status: "completed", contextLabel: "Finance", assigneeId: SAMUEL, dueAt: at(6, "12:00"), completedAt: at(6, "12:10"), createdById: SAMUEL },
+    { title: "Receive feed delivery", detail: "5 tons broiler finisher booked in", priority: "medium", status: "completed", contextLabel: "Inventory", assigneeId: AMINA, dueAt: at(1, "11:00"), completedAt: at(1, "11:30"), createdById: JOHNSON },
+    { title: "Pay VetPro invoice", detail: "₵290 settled by card", priority: "low", status: "completed", contextLabel: "Finance", assigneeId: JOHNSON, dueAt: at(6, "12:00"), completedAt: at(6, "12:10"), createdById: JOHNSON },
   ]);
 
   /* -------------------------------------------------------- Notifications */
 
   await db.insert(notifications).values([
-    { userId: SAMUEL, category: "health", tone: "error", icon: "alert", title: "High mortality threshold breached", description: "Flock JF-2026-003 in House 03 lost 9 birds in 24 hours, exceeding the 2% weekly threshold.", linkLabel: "Flock JF-2026-003", linkHref: "/flocks/JF-2026-003", actionLabel: "Investigate", createdAt: at(0, "08:45") },
-    { userId: SAMUEL, category: "health", tone: "error", icon: "syringe", title: "Vaccination overdue", description: "Fowl typhoid for Flock JF-2026-007 was scheduled and has not been recorded.", linkLabel: "Flock JF-2026-007", linkHref: "/flocks/JF-2026-007", actionLabel: "Schedule now", createdAt: at(0, "08:00") },
-    { userId: SAMUEL, category: "inventory", tone: "warning", icon: "package-open", title: "Grower mash below minimum", description: "Stock is at 900 kg against a 1,000 kg minimum. Estimated 4 days of cover remaining.", linkLabel: "Grower Mash", linkHref: "/inventory", actionLabel: "Reorder", createdAt: at(0, "07:30") },
-    { userId: SAMUEL, category: "finance", tone: "warning", icon: "credit-card", title: "Payment overdue", description: "Kola Poultry Traders has $3,420 outstanding, 18 days past terms.", linkLabel: "#ORD-2838", linkHref: "/orders", actionLabel: "Send reminder", createdAt: at(0, "06:00") },
-    { userId: SAMUEL, category: "tasks", tone: "violet", icon: "task", title: "Task assigned to you", description: 'Amina Okoro assigned "Order layer feed" to you, due today at 14:00.', linkLabel: "Order layer feed", linkHref: "/tasks", actionLabel: "Open task", createdAt: at(0, "05:00") },
-    { userId: SAMUEL, category: "inventory", tone: "warning", icon: "calendar-x", title: "Coccidiostat expiring in 10 days", description: "Batch CCP-0288 expires soon. Use or dispose before expiry.", linkLabel: "Batch CCP-0288", linkHref: "/medicines", actionLabel: "View batch", readAt: at(0, "09:00"), createdAt: at(1, "10:00") },
-    { userId: SAMUEL, category: "sales", tone: "success", icon: "receipt", title: "New order received", description: "Sunrise Supermarket placed order #ORD-2840 for $310.", linkLabel: "#ORD-2840", linkHref: "/orders", actionLabel: "View order", readAt: at(0, "09:00"), createdAt: at(1, "09:41") },
-    { userId: SAMUEL, category: "system", tone: "success", icon: "check", title: "Daily records complete", description: "All 6 houses submitted daily records before 09:00.", linkLabel: "Daily records", linkHref: "/records/daily", actionLabel: "View records", readAt: at(0, "09:00"), createdAt: at(1, "09:00") },
+    { userId: JOHNSON, category: "health", tone: "error", icon: "alert", title: "High mortality threshold breached", description: "Flock JF-2026-003 in House 03 lost 9 birds in 24 hours, exceeding the 2% weekly threshold.", linkLabel: "Flock JF-2026-003", linkHref: "/flocks/JF-2026-003", actionLabel: "Investigate", createdAt: at(0, "08:45") },
+    { userId: JOHNSON, category: "health", tone: "error", icon: "syringe", title: "Vaccination overdue", description: "Fowl typhoid for Flock JF-2026-007 was scheduled and has not been recorded.", linkLabel: "Flock JF-2026-007", linkHref: "/flocks/JF-2026-007", actionLabel: "Schedule now", createdAt: at(0, "08:00") },
+    { userId: JOHNSON, category: "inventory", tone: "warning", icon: "package-open", title: "Grower mash below minimum", description: "Stock is at 900 kg against a 1,000 kg minimum. Estimated 4 days of cover remaining.", linkLabel: "Grower Mash", linkHref: "/inventory", actionLabel: "Reorder", createdAt: at(0, "07:30") },
+    { userId: JOHNSON, category: "finance", tone: "warning", icon: "credit-card", title: "Payment overdue", description: "Kola Poultry Traders has $3,420 outstanding, 18 days past terms.", linkLabel: "#ORD-2838", linkHref: "/orders", actionLabel: "Send reminder", createdAt: at(0, "06:00") },
+    { userId: JOHNSON, category: "tasks", tone: "violet", icon: "task", title: "Task assigned to you", description: 'Amina Okoro assigned "Order layer feed" to you, due today at 14:00.', linkLabel: "Order layer feed", linkHref: "/tasks", actionLabel: "Open task", createdAt: at(0, "05:00") },
+    { userId: JOHNSON, category: "inventory", tone: "warning", icon: "calendar-x", title: "Coccidiostat expiring in 10 days", description: "Batch CCP-0288 expires soon. Use or dispose before expiry.", linkLabel: "Batch CCP-0288", linkHref: "/medicines", actionLabel: "View batch", readAt: at(0, "09:00"), createdAt: at(1, "10:00") },
+    { userId: JOHNSON, category: "sales", tone: "success", icon: "receipt", title: "New order received", description: "Sunrise Supermarket placed order #ORD-2840 for $310.", linkLabel: "#ORD-2840", linkHref: "/orders", actionLabel: "View order", readAt: at(0, "09:00"), createdAt: at(1, "09:41") },
+    { userId: JOHNSON, category: "system", tone: "success", icon: "check", title: "Daily records complete", description: "All 6 houses submitted daily records before 09:00.", linkLabel: "Daily records", linkHref: "/records/daily", actionLabel: "View records", readAt: at(0, "09:00"), createdAt: at(1, "09:00") },
   ]);
 
   await db.insert(notificationPreferences).values([
-    { userId: SAMUEL, channel: "In-app", scope: "All categories", enabled: true },
-    { userId: SAMUEL, channel: "Email", scope: "Health & Finance only", enabled: true },
-    { userId: SAMUEL, channel: "SMS", scope: "Critical alerts only", enabled: true },
-    { userId: SAMUEL, channel: "WhatsApp", scope: "Disabled", enabled: false },
+    { userId: JOHNSON, channel: "In-app", scope: "All categories", enabled: true },
+    { userId: JOHNSON, channel: "Email", scope: "Health & Finance only", enabled: true },
+    { userId: JOHNSON, channel: "SMS", scope: "Critical alerts only", enabled: true },
+    { userId: JOHNSON, channel: "WhatsApp", scope: "Disabled", enabled: false },
   ]);
 
   /* -------------------------------------------------------------- Reports */
 
   await db.insert(reports).values([
     { name: "Farm Performance", reportKey: "farm-performance", origin: "scheduled", scheduleLabel: "daily", periodStart: day(8), periodEnd: day(0), periodLabel: "Last 9 days", format: "pdf", sizeBytes: 1_258_291, status: "ready", generatedAt: at(0, "06:00") },
-    { name: "Egg Production", reportKey: "egg-production", origin: "manual", periodLabel: "This month", format: "excel", sizeBytes: 393_216, status: "ready", generatedById: SAMUEL, generatedAt: at(0, "07:30") },
+    { name: "Egg Production", reportKey: "egg-production", origin: "manual", periodLabel: "This month", format: "excel", sizeBytes: 393_216, status: "ready", generatedById: JOHNSON, generatedAt: at(0, "07:30") },
     { name: "Mortality Report", reportKey: "mortality", origin: "manual", periodStart: day(8), periodEnd: day(0), periodLabel: "Last 9 days", format: "pdf", sizeBytes: 634_880, status: "ready", generatedById: CHIKE, generatedAt: at(0, "08:15") },
     { name: "Financial Statement", reportKey: "financial-statement", origin: "scheduled", scheduleLabel: "monthly", periodLabel: "Last month", format: "pdf", sizeBytes: 2_516_582, status: "ready", generatedAt: at(8, "06:00") },
     { name: "Inventory Report", reportKey: "inventory", origin: "manual", periodLabel: `As at ${day(1)}`, format: "csv", sizeBytes: 98_304, status: "ready", generatedById: AMINA, generatedAt: at(1, "17:00") },

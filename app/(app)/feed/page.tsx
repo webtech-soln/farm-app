@@ -41,6 +41,7 @@ import {
   type FeedItemRow,
 } from "@/lib/data/feed";
 import { percent, signedPercent } from "@/lib/format";
+import { requirePageAccess } from "@/lib/auth/route-access";
 
 const columns: Column<FeedItemRow>[] = [
   {
@@ -121,6 +122,8 @@ const columns: Column<FeedItemRow>[] = [
 export default async function FeedPage({
   searchParams,
 }: PageProps<"/feed">) {
+  await requirePageAccess("records:read");
+
   const params = await searchParams;
   const days = numberParam(params, "days", 14, { min: 1, max: 365 });
   const filters = {

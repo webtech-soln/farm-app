@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { resetDatabase } from "@/lib/db/reset";
 import {
   customers,
+  deliveries,
   farmSettings,
   flocks,
   houses,
@@ -104,6 +105,17 @@ export async function seedFixtures() {
     })
     .returning({ id: products.id });
 
+  const [secondDriver] = await db
+    .insert(users)
+    .values({
+      name: "other driver",
+      email: "other-driver@test.local",
+      role: "driver",
+      passwordHash,
+      isActive: true,
+    })
+    .returning({ id: users.id });
+
   const [order] = await db
     .insert(orders)
     .values({
@@ -117,8 +129,34 @@ export async function seedFixtures() {
     })
     .returning({ id: orders.id });
 
+  // Two runs on the board: one belonging to the seeded driver, one to someone
+  // else — so a test can tell "may update a delivery" from "may update *this*
+  // delivery".
+  const [ownRun, otherRun] = await db
+    .insert(deliveries)
+    .values([
+      {
+        orderId: order.id,
+        driverId: userIdByRole.driver,
+        destination: "Own drop",
+        scheduledOn: "2026-01-02",
+        status: "scheduled" as const,
+      },
+      {
+        orderId: order.id,
+        driverId: secondDriver.id,
+        destination: "Someone else's drop",
+        scheduledOn: "2026-01-02",
+        status: "scheduled" as const,
+      },
+    ])
+    .returning({ id: deliveries.id });
+
   return {
     userIdByRole,
+    otherDriverId: secondDriver.id,
+    ownDeliveryId: ownRun.id,
+    otherDeliveryId: otherRun.id,
     houseId: house.id,
     flockId: flock.id,
     itemId: item.id,

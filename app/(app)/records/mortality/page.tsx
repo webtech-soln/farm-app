@@ -42,6 +42,7 @@ import { getHouseOptions } from "@/lib/data/houses";
 import { getFarmSettings } from "@/lib/data/settings";
 import { pageWindow, paginate, param } from "@/lib/pagination";
 import { count, percent, signedPercent } from "@/lib/format";
+import { requirePageAccess } from "@/lib/auth/route-access";
 
 const columns: Column<MortalityRecordRow>[] = [
   {
@@ -100,6 +101,8 @@ const columns: Column<MortalityRecordRow>[] = [
 export default async function MortalityPage({
   searchParams,
 }: PageProps<"/records/mortality">) {
+  await requirePageAccess("records:read");
+
   const params = await searchParams;
   const window = pageWindow(params);
   const filters = {

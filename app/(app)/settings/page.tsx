@@ -39,6 +39,7 @@ import {
   type SettingsField,
   type SettingsNavIcon,
 } from "@/lib/data/settings";
+import { requirePageAccess } from "@/lib/auth/route-access";
 
 const navIcons: Record<SettingsNavIcon, LucideIcon> = {
   "building-2": Building2,
@@ -84,6 +85,8 @@ function FieldRow({
 }
 
 export default async function SettingsPage() {
+  await requirePageAccess("settings:read");
+
   const [user, farmProfileFields, unitFields, thresholdFields, thresholdToggles] =
     await Promise.all([
       requireUser(),

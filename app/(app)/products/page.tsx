@@ -43,6 +43,7 @@ import {
   type ProductFormValues,
 } from "@/lib/data/products";
 import { count, money, percent, signedPercent } from "@/lib/format";
+import { requirePageAccess } from "@/lib/auth/route-access";
 
 const productIcons: Record<ProductIcon, LucideIcon> = {
   package: Package,
@@ -118,6 +119,8 @@ function buildColumns(
 export default async function ProductsPage({
   searchParams,
 }: PageProps<"/products">) {
+  await requirePageAccess("sales:read");
+
   const params = await searchParams;
 
   const [kpis, products, allPerformance, formValues] = await Promise.all([

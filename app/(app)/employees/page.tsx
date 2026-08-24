@@ -38,6 +38,7 @@ import {
   getUserFormValues,
 } from "@/lib/data/employees";
 import { count, percent } from "@/lib/format";
+import { requirePageAccess } from "@/lib/auth/route-access";
 
 function buildColumns(
   formValues: Map<number, UserFormValues>,
@@ -108,6 +109,8 @@ function buildColumns(
 export default async function EmployeesPage({
   searchParams,
 }: PageProps<"/employees">) {
+  await requirePageAccess("people:read");
+
   const params = await searchParams;
   const filters = {
     search: param(params, "q"),

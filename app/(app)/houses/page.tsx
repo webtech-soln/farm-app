@@ -31,6 +31,7 @@ import {
   getHouses,
   getTemperatureByHouse,
 } from "@/lib/data/houses";
+import { requirePageAccess } from "@/lib/auth/route-access";
 
 const summaryIcons: Record<string, LucideIcon> = {
   warehouse: Warehouse,
@@ -42,6 +43,8 @@ const summaryIcons: Record<string, LucideIcon> = {
 };
 
 export default async function HousesPage() {
+  await requirePageAccess("farm:read");
+
   const [farmSummary, houses, temperatureByHouse, healthDistribution] =
     await Promise.all([
       getFarmSummary(),

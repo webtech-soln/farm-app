@@ -46,6 +46,7 @@ import {
   type ExpenseFormValues,
 } from "@/lib/data/expenses";
 import { percent, signedPercent } from "@/lib/format";
+import { requirePageAccess } from "@/lib/auth/route-access";
 
 function buildColumns(
   suppliers: { id: number; name: string }[],
@@ -111,6 +112,8 @@ function buildColumns(
 export default async function ExpensesPage({
   searchParams,
 }: PageProps<"/expenses">) {
+  await requirePageAccess("finance:read");
+
   const params = await searchParams;
   const window = pageWindow(params);
   const filters = {

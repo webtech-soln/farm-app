@@ -9,6 +9,8 @@ import { Topbar } from "@/components/layout/topbar";
 import { ToastProvider } from "@/components/ui/toast";
 import { CapabilityProvider } from "@/components/form/capabilities";
 import { capabilitiesFor, ROLE_LABELS } from "@/lib/auth/permissions";
+import { visibleRoutes } from "@/lib/auth/route-access";
+import { UNRESTRICTED_ROUTES } from "@/lib/auth/route-capability";
 import { requireUser, SESSION_IDLE_MS } from "@/lib/auth/session";
 import { getNotificationCounts } from "@/lib/data/notifications";
 import { getFarmSettings } from "@/lib/data/settings";
@@ -19,6 +21,12 @@ import { getFarmSettings } from "@/lib/data/settings";
  */
 export default async function AppLayout({ children }: LayoutProps<"/">) {
   const user = await requireUser();
+  // Resolved once here and handed down, so the sidebar, the drawer and the
+  // phone bar all offer exactly the boards this role's pages will admit.
+  const capabilities = capabilitiesFor(user.role);
+  // Plain paths, because the nav items carry icon components that cannot be
+  // serialised into a Client Component.
+  const allowed = [...visibleRoutes(user.role), ...UNRESTRICTED_ROUTES];
   const [settings, counts] = await Promise.all([
     getFarmSettings(),
     getNotificationCounts(user.id),
@@ -32,10 +40,11 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
     },
     farmName: settings.farmName,
     estate: settings.estateName ?? settings.cityState ?? "",
+    allowed,
   };
 
   return (
-    <CapabilityProvider value={capabilitiesFor(user.role)}>
+    <CapabilityProvider value={capabilities}>
       <ToastProvider>
         <SessionWatchdog idleMs={SESSION_IDLE_MS} />
         <SidebarDrawerProvider>
@@ -51,7 +60,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
               <main className="flex flex-1 flex-col gap-5 p-4 md:p-7">
                 {children}
               </main>
-              <MobileBottomNav />
+              <MobileBottomNav allowed={allowed} />
             </div>
           </div>
         </SidebarDrawerProvider>

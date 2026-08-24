@@ -31,10 +31,13 @@ import {
   getFlockWeightGrowth,
 } from "@/lib/data/flock-detail";
 import { count } from "@/lib/format";
+import { requirePageAccess } from "@/lib/auth/route-access";
 
 export default async function FlockDetailPage({
   params,
 }: PageProps<"/flocks/[flockId]">) {
+  await requirePageAccess("farm:read");
+
   const { flockId } = await params;
   const flock = await getFlockDetail(flockId);
 

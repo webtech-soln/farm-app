@@ -49,6 +49,7 @@ import { getFlockOptions } from "@/lib/data/flocks";
 import { getHouseOptions } from "@/lib/data/houses";
 import { pageWindow, paginate, param } from "@/lib/pagination";
 import { count } from "@/lib/format";
+import { requirePageAccess } from "@/lib/auth/route-access";
 
 const alertIcons: Record<HealthAlert["icon"], LucideIcon> = {
   alert: TriangleAlert,
@@ -111,6 +112,8 @@ const columns: Column<HealthEventRow>[] = [
 export default async function HealthPage({
   searchParams,
 }: PageProps<"/health">) {
+  await requirePageAccess("health:read");
+
   const params = await searchParams;
   const window = pageWindow(params);
   const filters = {

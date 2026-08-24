@@ -41,6 +41,7 @@ import {
 import { getHouseOptions } from "@/lib/data/houses";
 import { count, percent } from "@/lib/format";
 import { PAGE_SIZE, paginateAll, param } from "@/lib/pagination";
+import { requirePageAccess } from "@/lib/auth/route-access";
 
 function buildColumns(
   houses: { id: number; code: string; name: string }[],
@@ -138,6 +139,8 @@ function buildColumns(
 export default async function FlocksPage({
   searchParams,
 }: PageProps<"/flocks">) {
+  await requirePageAccess("farm:read");
+
   const params = await searchParams;
   const filters = {
     search: param(params, "q"),

@@ -40,6 +40,7 @@ import {
   type RevenueEntryRow,
 } from "@/lib/data/revenue";
 import { money, percent, signedPercent } from "@/lib/format";
+import { requirePageAccess } from "@/lib/auth/route-access";
 
 function buildColumns(): Column<RevenueEntryRow>[] {
   return [
@@ -104,6 +105,8 @@ function buildColumns(): Column<RevenueEntryRow>[] {
 export default async function RevenuePage({
   searchParams,
 }: PageProps<"/revenue">) {
+  await requirePageAccess("finance:read");
+
   const params = await searchParams;
   const [
     kpis,

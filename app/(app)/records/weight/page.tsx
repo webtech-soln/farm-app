@@ -19,6 +19,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { KpiCard, KpiGrid } from "@/components/ui/kpi-card";
 import { getFlockOptions, getWeightRecords } from "@/lib/data/flocks";
 import { getHouseOptions } from "@/lib/data/houses";
+import { requirePageAccess } from "@/lib/auth/route-access";
 
 type WeightRow = Awaited<ReturnType<typeof getWeightRecords>>[number];
 
@@ -85,6 +86,8 @@ const columns: Column<WeightRow>[] = [
 ];
 
 export default async function WeightPage() {
+  await requirePageAccess("records:read");
+
   const [records, flocks, houses] = await Promise.all([
     getWeightRecords(),
     getFlockOptions({ activeOnly: true }),

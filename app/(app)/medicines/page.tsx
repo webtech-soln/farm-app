@@ -41,6 +41,7 @@ import {
 import { getSupplierOptions } from "@/lib/data/suppliers";
 import { paginateAll, param } from "@/lib/pagination";
 import { count } from "@/lib/format";
+import { requirePageAccess } from "@/lib/auth/route-access";
 
 function buildColumns(
   suppliers: { id: number; name: string }[],
@@ -127,6 +128,8 @@ function buildColumns(
 export default async function MedicinesPage({
   searchParams,
 }: PageProps<"/medicines">) {
+  await requirePageAccess("health:read");
+
   const params = await searchParams;
   const filters = {
     search: param(params, "q"),

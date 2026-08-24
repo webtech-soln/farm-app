@@ -39,6 +39,7 @@ import {
   type OrderEventIcon,
   type OrderRow,
 } from "@/lib/data/orders";
+import { requirePageAccess } from "@/lib/auth/route-access";
 
 const eventStyles: Record<OrderEventIcon, { icon: LucideIcon; tone: Tone }> = {
   delivered: { icon: CircleCheckBig, tone: "success" },
@@ -120,6 +121,8 @@ function buildColumns(): Column<OrderRow>[] {
 export default async function OrdersPage({
   searchParams,
 }: PageProps<"/orders">) {
+  await requirePageAccess("sales:read");
+
   const params = await searchParams;
   const window = pageWindow(params);
   const filters = {

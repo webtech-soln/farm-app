@@ -36,6 +36,7 @@ import {
   type CashLine,
 } from "@/lib/data/finance";
 import { money, percent, signedPercent } from "@/lib/format";
+import { requirePageAccess } from "@/lib/auth/route-access";
 
 const cashIcons: Record<CashLine["icon"], LucideIcon> = {
   wallet: Wallet,
@@ -45,6 +46,8 @@ const cashIcons: Record<CashLine["icon"], LucideIcon> = {
 };
 
 export default async function FinancePage() {
+  await requirePageAccess("finance:read");
+
   const [
     kpis,
     revenueVsExpenses,

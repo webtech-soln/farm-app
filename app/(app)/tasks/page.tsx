@@ -26,12 +26,15 @@ import {
 } from "@/lib/data/tasks";
 import { toneBg, toneSolid, toneText } from "@/components/ui/tone";
 import { cn } from "@/lib/cn";
+import { requirePageAccess } from "@/lib/auth/route-access";
 
 
 
 export default async function TasksPage({
   searchParams,
 }: PageProps<"/tasks">) {
+  await requirePageAccess("tasks:read");
+
   const params = await searchParams;
   const assignee = numberParam(params, "assignee", 0, { max: 2_147_483_647 });
   const priority = param(params, "priority");

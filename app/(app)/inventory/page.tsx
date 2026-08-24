@@ -40,6 +40,7 @@ import {
 import { getSupplierOptions } from "@/lib/data/suppliers";
 import { paginateAll, param } from "@/lib/pagination";
 import { count, money } from "@/lib/format";
+import { requirePageAccess } from "@/lib/auth/route-access";
 
 function buildColumns(
   suppliers: { id: number; name: string }[],
@@ -120,6 +121,8 @@ function buildColumns(
 export default async function InventoryPage({
   searchParams,
 }: PageProps<"/inventory">) {
+  await requirePageAccess("inventory:read");
+
   const params = await searchParams;
   const category = param(params, "category");
   const status = param(params, "status");

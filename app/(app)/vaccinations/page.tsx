@@ -38,6 +38,7 @@ import { getFlockOptions } from "@/lib/data/flocks";
 import { getHouseOptions } from "@/lib/data/houses";
 import { pageWindow, paginate, param } from "@/lib/pagination";
 import { count } from "@/lib/format";
+import { requirePageAccess } from "@/lib/auth/route-access";
 
 const columns: Column<VaccinationRow>[] = [
   {
@@ -102,6 +103,8 @@ const columns: Column<VaccinationRow>[] = [
 export default async function VaccinationsPage({
   searchParams,
 }: PageProps<"/vaccinations">) {
+  await requirePageAccess("health:read");
+
   const params = await searchParams;
   const window = pageWindow(params);
   // `?month=YYYY-MM` moves the calendar; without it — or with anything that is

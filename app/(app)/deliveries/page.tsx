@@ -45,6 +45,7 @@ import {
   getUndispatchedOrders,
 } from "@/lib/data/deliveries";
 import { count, percent } from "@/lib/format";
+import { requirePageAccess } from "@/lib/auth/route-access";
 
 function buildColumns(): Column<DeliveryRow>[] {
   return [
@@ -103,6 +104,8 @@ function buildColumns(): Column<DeliveryRow>[] {
 export default async function DeliveriesPage({
   searchParams,
 }: PageProps<"/deliveries">) {
+  await requirePageAccess("deliveries:read");
+
   const params = await searchParams;
   const window = pageWindow(params);
   const filters = {

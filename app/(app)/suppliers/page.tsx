@@ -40,6 +40,7 @@ import {
   SupplierDialog,
 } from "@/components/dialogs/inventory-dialogs";
 import { count, money, signedPercent } from "@/lib/format";
+import { requirePageAccess } from "@/lib/auth/route-access";
 
 function buildColumns(
   formValues: Map<number, SupplierFormValues>,
@@ -112,6 +113,8 @@ function buildColumns(
 export default async function SuppliersPage({
   searchParams,
 }: PageProps<"/suppliers">) {
+  await requirePageAccess("inventory:read");
+
   const params = await searchParams;
   const filters = {
     search: param(params, "q"),

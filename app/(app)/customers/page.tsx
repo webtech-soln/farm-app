@@ -42,6 +42,7 @@ import {
   type CustomerFormValues,
 } from "@/lib/data/customers";
 import { count, money, percent, signedPercent } from "@/lib/format";
+import { requirePageAccess } from "@/lib/auth/route-access";
 
 function buildColumns(
   formValues: Map<number, CustomerFormValues>,
@@ -111,6 +112,8 @@ function buildColumns(
 export default async function CustomersPage({
   searchParams,
 }: PageProps<"/customers">) {
+  await requirePageAccess("sales:read");
+
   const params = await searchParams;
   const filters = {
     search: param(params, "q"),

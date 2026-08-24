@@ -35,10 +35,13 @@ import { IconChip } from "@/components/ui/icon-chip";
 import { deleteDailyRecord, saveDailyRecord } from "@/lib/actions/records";
 import { getDailyRecordForm, getRecentDailyRecords } from "@/lib/data/daily";
 import { getFeedOptions } from "@/lib/data/feed";
+import { requirePageAccess } from "@/lib/auth/route-access";
 
 export default async function DailyRecordsPage({
   searchParams,
 }: PageProps<"/records/daily">) {
+  await requirePageAccess("records:read");
+
   const { house, flock, date } = await searchParams;
 
   const form = await getDailyRecordForm({

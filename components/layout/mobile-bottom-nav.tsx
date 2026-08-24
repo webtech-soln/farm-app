@@ -4,12 +4,13 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Plus } from "lucide-react";
 
-import { bottomNavItems, isActive } from "@/lib/nav";
+import { bottomNavItemsFor, isActive, type NavItem } from "@/lib/nav";
 
 /** Phone-only tab bar from board `29 · Mobile`, with the record FAB centred. */
-export function MobileBottomNav() {
+export function MobileBottomNav({ allowed }: { allowed: readonly string[] }) {
   const pathname = usePathname();
-  const [left, right] = [bottomNavItems.slice(0, 2), bottomNavItems.slice(2)];
+  const items = bottomNavItemsFor(allowed);
+  const [left, right] = [items.slice(0, 2), items.slice(2)];
 
   return (
     <nav className="sticky bottom-0 z-20 flex h-[62px] shrink-0 items-center border-t border-border-hair bg-card md:hidden">
@@ -38,7 +39,7 @@ function BottomNavLink({
   item,
   pathname,
 }: {
-  item: (typeof bottomNavItems)[number];
+  item: NavItem;
   pathname: string;
 }) {
   const active = isActive(pathname, item.href);

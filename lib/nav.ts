@@ -1,4 +1,5 @@
 import type { LucideIcon } from "lucide-react";
+
 import {
   Bell,
   Bird,
@@ -97,6 +98,27 @@ export const bottomNavItems: NavItem[] = [
   { label: "Tasks", href: "/tasks", icon: CircleCheckBig },
   { label: "More", href: "/settings", icon: Menu },
 ];
+
+/**
+ * The same groups, reduced to the boards a role may actually open.
+ *
+ * Takes a list of hrefs rather than the role's capabilities because this runs
+ * in the client bundle: the nav items carry Lucide icons, which are functions
+ * and cannot be serialised across the server boundary. The server sends the
+ * allowed paths — plain strings — and the filtering happens here, next to the
+ * icons that never have to move.
+ */
+export function navGroupsFor(allowed: readonly string[]): NavItem[][] {
+  const paths = new Set(allowed);
+  return navGroups
+    .map((group) => group.filter((item) => paths.has(item.href)))
+    .filter((group) => group.length > 0);
+}
+
+export function bottomNavItemsFor(allowed: readonly string[]): NavItem[] {
+  const paths = new Set(allowed);
+  return bottomNavItems.filter((item) => paths.has(item.href));
+}
 
 export function isActive(pathname: string, href: string) {
   if (href === "/") return pathname === "/";

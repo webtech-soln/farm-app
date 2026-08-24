@@ -75,7 +75,9 @@ export const saveThresholdSettings = createFormAction({
  */
 export const saveNotificationPreference = createFormAction({
   schema: notificationPreferenceSchema,
-  capability: "farm:read",
+  // A person's own notification settings, not the farm's — every role has this,
+  // including the ones that can read almost nothing else.
+  capability: "profile:write",
   revalidate: ["/settings", "/notifications"],
   handler: async ({ channel, scope, enabled }, { user }) => {
     await db

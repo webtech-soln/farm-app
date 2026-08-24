@@ -31,6 +31,8 @@ import {
   type FlockRow,
 } from "@/lib/data/dashboard";
 import { getFlockKpis } from "@/lib/data/flocks";
+import { can } from "@/lib/auth/permissions";
+import { requirePageAccess } from "@/lib/auth/route-access";
 
 const flockColumns: Column<FlockRow>[] = [
   {
@@ -73,6 +75,8 @@ const flockColumns: Column<FlockRow>[] = [
 ];
 
 export default async function DashboardPage() {
+  const viewer = await requirePageAccess("farm:read");
+
   const [
     user,
     { greeting, today },
@@ -103,6 +107,19 @@ export default async function DashboardPage() {
   const housesInUse = houseOccupancy.filter((h) => h.current > 0).length;
   const tasksDone = todaysTasks.filter((task) => task.done).length;
 
+  /*
+   * Revenue, Expenses and Net Profit sit in the same KPI row as bird counts,
+   * and the finance chart beside it. Without this the dashboard would hand a
+   * supervisor or an attendant the very figures `finance:read` exists to keep
+   * from them — the board would quietly undo the model.
+   */
+  const showsFinance = can(viewer.role, "finance:read");
+  const visibleKpis = showsFinance
+    ? dashboardKpis
+    : dashboardKpis.filter(
+        (kpi) => !["Revenue", "Expenses", "Net Profit"].includes(kpi.label),
+      );
+
   return (
     <>
       <PageHeader
@@ -118,7 +135,7 @@ export default async function DashboardPage() {
       </PageHeader>
 
       <KpiGrid>
-        {dashboardKpis.map((kpi) => (
+        {visibleKpis.map((kpi) => (
           <KpiCard key={kpi.label} {...kpi} />
         ))}
       </KpiGrid>
@@ -163,6 +180,7 @@ export default async function DashboardPage() {
           />
         </Card>
 
+        {showsFinance ? (
         <Card className="flex flex-col gap-4 p-4 xl:w-[470px]">
           <div className="flex flex-col gap-[3px]">
             <h2 className="text-md font-semibold text-ink">
@@ -201,6 +219,7 @@ export default async function DashboardPage() {
             ]}
           />
         </Card>
+        ) : null}
       </div>
 
       <div className="flex flex-col gap-4 xl:flex-row">

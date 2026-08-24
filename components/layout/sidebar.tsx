@@ -14,7 +14,7 @@ import { Egg, LogOut, Menu, X } from "lucide-react";
 
 import { signOut } from "@/lib/actions/auth";
 import { cn } from "@/lib/cn";
-import { isActive, navGroups } from "@/lib/nav";
+import { isActive, navGroupsFor } from "@/lib/nav";
 
 export type SidebarUser = {
   initials: string;
@@ -27,6 +27,11 @@ type SidebarProps = {
   user: SidebarUser;
   farmName: string;
   estate: string;
+  /**
+   * The paths this role may open, from the same table the page gate reads, so
+   * the sidebar can never offer a board that would redirect on click.
+   */
+  allowed: readonly string[];
 };
 
 /* -------------------------------------------------------------------------- */
@@ -163,6 +168,7 @@ function SidebarContent({
   user,
   farmName,
   estate,
+  allowed,
   expanded = false,
   tabbable = true,
   onNavigate,
@@ -204,7 +210,7 @@ function SidebarContent({
           expanded ? "" : "max-xl:items-center max-xl:px-2",
         )}
       >
-        {navGroups.map((group, index) => (
+        {navGroupsFor(allowed).map((group, index) => (
           <ul key={index} className="flex w-full flex-col gap-0.5">
             {group.map((item) => {
               const active = isActive(pathname, item.href);

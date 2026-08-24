@@ -25,10 +25,13 @@ import {
   getHouseTemperatureDay,
 } from "@/lib/data/house-detail";
 import { getHouses } from "@/lib/data/houses";
+import { requirePageAccess } from "@/lib/auth/route-access";
 
 export default async function HouseDetailPage({
   params,
 }: PageProps<"/houses/[houseId]">) {
+  await requirePageAccess("farm:read");
+
   const { houseId } = await params;
   const house = (await getHouses()).find((entry) => entry.id === houseId);
 

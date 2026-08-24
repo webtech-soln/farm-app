@@ -8,7 +8,15 @@ import type { UserRole } from "@/lib/db/schema";
 describe("permissions", () => {
   it("gives the owner everything and the driver almost nothing", () => {
     expect(capabilitiesFor("owner")).toContain("settings:write");
-    expect(capabilitiesFor("driver")).toEqual(["farm:read", "tasks:write"]);
+    expect(capabilitiesFor("driver").sort()).toEqual(
+      [
+        "deliveries:read",
+        "deliveries:write",
+        "profile:write",
+        "tasks:read",
+        "tasks:write",
+      ].sort(),
+    );
   });
 
   it("withholds settings from the manager, who has everything else", () => {
@@ -27,9 +35,47 @@ describe("permissions", () => {
     for (const capability of denied) expect(can(role, capability as never)).toBe(false);
   });
 
-  it("gives every role read access", () => {
+  it("scopes reading to the sector a role works in", () => {
+    // The point of the read capabilities: a driver cannot open the books, and
+    // a sales officer cannot open the flock records.
+    expect(can("driver", "finance:read")).toBe(false);
+    expect(can("driver", "farm:read")).toBe(false);
+    expect(can("sales", "records:read")).toBe(false);
+    expect(can("supervisor", "finance:read")).toBe(false);
+
+    expect(can("driver", "deliveries:read")).toBe(true);
+    expect(can("sales", "sales:read")).toBe(true);
+    expect(can("vet", "health:read")).toBe(true);
+  });
+
+  it("leaves every role its own tasks and its own account", () => {
     const roles: UserRole[] = ["owner", "manager", "supervisor", "attendant", "vet", "sales", "driver"];
-    for (const role of roles) expect(can(role, "farm:read")).toBe(true);
+    for (const role of roles) {
+      expect(can(role, "tasks:read")).toBe(true);
+      expect(can(role, "tasks:write")).toBe(true);
+      expect(can(role, "profile:write")).toBe(true);
+    }
+  });
+
+  it("keeps the write model unchanged by the read split", () => {
+    expect(can("supervisor", "farm:write")).toBe(true);
+    expect(can("attendant", "records:write")).toBe(true);
+    expect(can("vet", "health:write")).toBe(true);
+    expect(can("sales", "sales:write")).toBe(true);
+    expect(can("driver", "sales:write")).toBe(false);
+    expect(can("manager", "settings:write")).toBe(false);
+  });
+
+  it("lets a driver close off a run without handing them Sales", () => {
+    // The split that makes the run sheet usable: a driver may update a
+    // delivery's state, but not raise one, or touch orders and customers.
+    expect(can("driver", "deliveries:write")).toBe(true);
+    expect(can("driver", "sales:write")).toBe(false);
+    expect(can("sales", "deliveries:write")).toBe(true);
+
+    for (const role of ["attendant", "vet"] as UserRole[]) {
+      expect(can(role, "deliveries:write")).toBe(false);
+    }
   });
 });
 
