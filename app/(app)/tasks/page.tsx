@@ -15,6 +15,7 @@ import Link from "next/link";
 import { PageHeader } from "@/components/layout/page-header";
 import { FilterBar } from "@/components/ui/filter-bar";
 import { getAssigneeOptions } from "@/lib/data/employees";
+import { can } from "@/lib/auth/permissions";
 import { numberParam, param } from "@/lib/pagination";
 import { Avatar } from "@/components/ui/avatar";
 import { Card } from "@/components/ui/card";
@@ -33,19 +34,28 @@ import { requirePageAccess } from "@/lib/auth/route-access";
 export default async function TasksPage({
   searchParams,
 }: PageProps<"/tasks">) {
-  await requirePageAccess("tasks:read");
+  const viewer = await requirePageAccess("tasks:read");
 
   const params = await searchParams;
   const assignee = numberParam(params, "assignee", 0, { max: 2_147_483_647 });
   const priority = param(params, "priority");
   const list = param(params, "view") === "list";
 
+  /*
+   * Task text carries the detail of whatever sector raised it, so an unscoped
+   * board hands every role the figures the sector gates exist to withhold.
+   * Whoever manages people manages their work, so the same capability decides
+   * it; everyone else sees the tasks they were given or raised themselves.
+   */
+  const ownedBy = can(viewer.role, "people:read") ? undefined : viewer.id;
+
   const [taskBoard, counts, people, formValues] = await Promise.all([
     getTaskBoard({
       assigneeId: assignee || undefined,
       priority: priority as "high" | "medium" | "low" | undefined,
+      ownedBy,
     }),
-    getTaskCounts(),
+    getTaskCounts(ownedBy),
     getAssigneeOptions(),
     getTaskFormValues(),
   ]);

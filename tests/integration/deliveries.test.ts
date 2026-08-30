@@ -141,3 +141,74 @@ suite("the delivery run sheet", () => {
     });
   });
 });
+
+/* -------------------------------------------------------------------------- */
+
+suite("the tasks board does not leak the sectors it cuts across", () => {
+  beforeEach(async () => {
+    fx = await seedFixtures();
+    signOutOfTest();
+  });
+
+  it("shows a narrow role only its own work", async () => {
+    const { getTaskBoard } = await import("@/lib/data/tasks");
+    const { tasks } = await import("@/lib/db/schema");
+
+    await db.insert(tasks).values([
+      {
+        title: "Chase payment",
+        detail: "₵3,420 overdue",
+        priority: "high",
+        status: "pending",
+        assigneeId: fx.userIdByRole.sales,
+        createdById: fx.userIdByRole.owner,
+      },
+      {
+        title: "Drop the crates",
+        detail: "Bodija run",
+        priority: "medium",
+        status: "pending",
+        assigneeId: fx.userIdByRole.driver,
+        createdById: fx.userIdByRole.owner,
+      },
+    ]);
+
+    const board = await getTaskBoard({ ownedBy: fx.userIdByRole.driver });
+    const titles = board.flatMap((column) => column.tasks.map((t) => t.title));
+
+    expect(titles).toContain("Drop the crates");
+    // The finance figure in the other task's detail is what must not travel.
+    expect(titles).not.toContain("Chase payment");
+  });
+
+  it("shows everything to whoever manages the people", async () => {
+    const { getTaskBoard } = await import("@/lib/data/tasks");
+    const { tasks } = await import("@/lib/db/schema");
+
+    await db.insert(tasks).values({
+      title: "Chase payment",
+      detail: "₵3,420 overdue",
+      priority: "high",
+      status: "pending",
+      assigneeId: fx.userIdByRole.sales,
+      createdById: fx.userIdByRole.owner,
+    });
+
+    const board = await getTaskBoard({});
+    const titles = board.flatMap((column) => column.tasks.map((t) => t.title));
+    expect(titles).toContain("Chase payment");
+  });
+
+  it("counts only what the board shows", async () => {
+    const { getTaskCounts } = await import("@/lib/data/tasks");
+    const { tasks } = await import("@/lib/db/schema");
+
+    await db.insert(tasks).values([
+      { title: "Theirs", priority: "high", status: "pending", assigneeId: fx.userIdByRole.sales, createdById: fx.userIdByRole.owner },
+      { title: "Mine", priority: "high", status: "pending", assigneeId: fx.userIdByRole.driver, createdById: fx.userIdByRole.owner },
+    ]);
+
+    expect((await getTaskCounts(fx.userIdByRole.driver)).open).toBe(1);
+    expect((await getTaskCounts()).open).toBe(2);
+  });
+});

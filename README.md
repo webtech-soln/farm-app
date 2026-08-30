@@ -85,9 +85,9 @@ Tests never touch your development database — the Vitest config points
 
 ## Deploying
 
-The app is a standard Next.js server. Every route renders on demand (there is
-nothing to statically export), so it needs a Node runtime and a reachable
-database.
+**[DEPLOYMENT.md](DEPLOYMENT.md) is the runbook** — provisioning, the first
+owner account, routine deploys, rollback, backups, and the gotchas that have
+actually bitten. The short version:
 
 ```bash
 npm ci
@@ -96,17 +96,8 @@ npm run build
 npm start               # defaults to port 3000
 ```
 
-### Before the first production deploy
-
-- [ ] `SESSION_SECRET` set to a fresh 64-character value, held in your secret
-      manager and not in the repo
-- [ ] `DATABASE_URL` points at the production database, with its own role and
-      password
-- [ ] TLS terminated in front of the app — the session cookie is marked
-      `Secure` in production and will not survive plain HTTP
-- [ ] `/api/health` wired into the load balancer (200 = serving, 503 = drain)
-- [ ] Automated database backups on, and **a restore actually rehearsed**
-- [ ] Log output shipped somewhere durable — see below
+Every route renders on demand, so this needs a Node runtime and a reachable
+database — there is nothing to export to a CDN.
 
 ### Health
 
@@ -117,64 +108,26 @@ database is reachable:
 { "status": "ok", "database": "ok", "latencyMs": 7 }
 ```
 
-A 503 means this instance cannot serve. It deliberately exposes no version,
-row counts or configuration.
+`200` means serving, `503` means drain this instance. Wire it into your load
+balancer.
 
----
+### Everything else
 
-## Operations
+The pre-deploy checklist, the first owner account, rollback, backups and
+restore, log shipping, and the gotchas that have actually caught people out are
+all in **[DEPLOYMENT.md](DEPLOYMENT.md)**. They live there rather than here so
+there is one copy to keep true.
 
-### Logs
-
-Production emits one JSON object per line, each carrying a `requestId`:
-
-```json
-{"level":"error","time":"2026-08-24T01:12:04.881Z","message":"Unhandled error in a Server Action","requestId":"…","error":{"name":"Error","message":"…","stack":"…"}}
-```
-
-Ship stdout to whatever you use — CloudWatch, Loki, Datadog. `LOG_LEVEL`
-controls the floor.
-
-**Error tracking** is not wired to a provider. Everything funnels through
-`reportError` in `lib/observability/logger.ts`; adding Sentry is one edit
-there, not a search through every catch block.
-
-### Backups
-
-Nothing in this repo backs up your data — it has to be configured wherever the
-database lives.
-
-```bash
-# Take one
-pg_dump --format=custom --file=farm-$(date +%F).dump "$DATABASE_URL"
-
-# Restore into a fresh database, then point the app at it
-createdb farm_app_restored
-pg_restore --dbname=farm_app_restored --clean --if-exists farm-2026-08-24.dump
-```
-
-A backup you have never restored is a hypothesis. Rehearse it.
-
-### Migrations
-
-Schema changes are files, never `db:push` in production:
-
-```bash
-# after editing lib/db/schema.ts
-npm run db:generate      # writes lib/db/migrations/NNNN_name.sql — commit it
-npm run db:migrate       # applies anything pending
-```
-
-Migrations run forward only; there is no down step. Take a backup before
-applying one that drops or rewrites a column.
+Two worth knowing before you read it: **TLS is mandatory** — the session cookie
+is `Secure` in production and sign-in silently fails without it — and a stray
+`.env` in the deploy directory will quietly override your platform's variables.
 
 ### Rate limiting
 
 Failed sign-ins are recorded in `login_attempts` and throttled over a rolling
-15-minute window: 5 per account, 20 per address. It lives in the database
-rather than in memory so it survives a deploy and works with more than one
-instance. A successful sign-in clears that account's history, and rows age out
-on their own.
+15-minute window: 5 per account, 20 per address. It lives in the database rather
+than in memory so it survives a deploy and works with more than one instance. A
+successful sign-in clears that account's history, and rows age out on their own.
 
 ---
 
@@ -195,11 +148,23 @@ on their own.
 
 ### The security model, briefly
 
-Authorization is a **capability** per role (`lib/auth/permissions.ts`), checked
-inside every Server Action via `requireCapability`. The proxy redirect is a
-first line of defence only — actions are reachable by direct POST, so the gate
-has to be in the action itself, and it is. `tests/integration/actions.test.ts`
-holds that property in place.
+Authorization is a **capability** per role (`lib/auth/permissions.ts`), and it
+covers reading as well as writing.
+
+**Writes** are checked inside every Server Action via `requireCapability`. The
+proxy redirect is a first line of defence only — actions are reachable by direct
+POST, so the gate has to be in the action itself, and it is.
+
+**Reads** are checked by `requirePageAccess` at the top of every board, against
+one table in `lib/auth/route-capability.ts` that the sidebar and the CSV exports
+read too — so the nav can never offer a board that would redirect on click, and
+an export can never hand over what a page just refused. A refused read redirects
+to the role's own landing board rather than erroring.
+
+Three test files hold this in place: `tests/integration/actions.test.ts` for the
+write gate, `tests/unit/route-access.test.ts` for the full role-by-board matrix,
+and `tests/integration/deliveries.test.ts` for the row-level rule that keeps a
+driver to their own run sheet.
 
 ---
 

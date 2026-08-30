@@ -7,7 +7,6 @@ import {
   ChevronDown,
   CircleQuestionMark,
   MapPinned,
-  Search,
 } from "lucide-react";
 
 /** Board `Component / Topbar`: 64px tall, white, hairline bottom border. */
@@ -23,18 +22,6 @@ export function Topbar({
   return (
     <header className="flex h-16 shrink-0 items-center gap-3.5 border-b border-border-hair bg-card px-4 md:px-6">
       <SidebarTrigger />
-      <label className="flex h-9 flex-1 items-center gap-2 rounded-nav border border-border-hair bg-bg px-[11px] lg:max-w-[340px]">
-        <Search className="size-4 shrink-0 text-ink-3" />
-        <input
-          type="search"
-          placeholder="Search flocks, houses, orders…"
-          className="min-w-0 flex-1 bg-transparent text-base text-ink outline-none placeholder:text-ink-3"
-        />
-        <kbd className="hidden rounded-[5px] border border-border-hair bg-card px-1.5 py-0.5 text-2xs font-medium text-ink-3 sm:block">
-          ⌘K
-        </kbd>
-      </label>
-
       <div className="flex-1 max-lg:hidden" />
 
       <button

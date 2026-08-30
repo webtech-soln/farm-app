@@ -554,7 +554,7 @@ export function DeliveryStatusDialog({
 }) {
   return (
     <FormDialog
-      capability="sales:write"
+      capability="deliveries:write"
       trigger={{
         label: `Update delivery to ${destination}`,
         icon: "truck",

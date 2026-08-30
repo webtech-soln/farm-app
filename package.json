@@ -14,12 +14,12 @@
     "test:integration": "vitest run tests/integration",
     "test:coverage": "vitest run --coverage",
     "verify": "npm run typecheck && npm run lint && npm run test",
-    "db:generate": "node --env-file=.env node_modules/drizzle-kit/bin.cjs generate",
-    "db:migrate": "node --env-file=.env node_modules/drizzle-kit/bin.cjs migrate",
-    "db:push": "node --env-file=.env node_modules/drizzle-kit/bin.cjs push",
-    "db:studio": "node --env-file=.env node_modules/drizzle-kit/bin.cjs studio",
-    "db:seed": "tsx --env-file=.env lib/db/seed.ts",
-    "db:reset": "tsx --env-file=.env lib/db/reset.ts"
+    "db:generate": "node --env-file-if-exists=.env node_modules/drizzle-kit/bin.cjs generate",
+    "db:migrate": "node --env-file-if-exists=.env node_modules/drizzle-kit/bin.cjs migrate",
+    "db:push": "node --env-file-if-exists=.env node_modules/drizzle-kit/bin.cjs push",
+    "db:studio": "node --env-file-if-exists=.env node_modules/drizzle-kit/bin.cjs studio",
+    "db:seed": "tsx --env-file-if-exists=.env lib/db/seed.ts",
+    "db:reset": "tsx --env-file-if-exists=.env lib/db/reset.ts"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.2",

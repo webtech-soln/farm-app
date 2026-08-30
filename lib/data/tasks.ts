@@ -56,6 +56,7 @@ const COLUMNS = [
 export type TaskFilters = {
   assigneeId?: number;
   priority?: "high" | "medium" | "low";
+  ownedBy?: number;
 };
 
 /**
@@ -67,6 +68,11 @@ export async function getTaskBoard(
 ): Promise<TaskColumn[]> {
   const conditions = [];
   if (filters.assigneeId) conditions.push(eq(table.assigneeId, filters.assigneeId));
+  if (filters.ownedBy !== undefined) {
+    conditions.push(
+      sql`(${table.assigneeId} = ${filters.ownedBy} or ${table.createdById} = ${filters.ownedBy})`,
+    );
+  }
   if (filters.priority) {
     conditions.push(sql`${table.priority}::text = ${filters.priority}`);
   }
@@ -128,14 +134,19 @@ export async function getTaskBoard(
 }
 
 /** The "14 open · 6 completed today" strip above the board. */
-export async function getTaskCounts() {
+export async function getTaskCounts(ownedBy?: number) {
   const [row] = await db
     .select({
       open: sql<number>`count(*) filter (where ${table.status} <> 'completed')::int`,
       overdue: sql<number>`count(*) filter (where ${table.status} <> 'completed' and ${table.dueAt} < now())::int`,
       completedToday: sql<number>`count(*) filter (where ${table.status} = 'completed' and ${table.completedAt}::date = current_date)::int`,
     })
-    .from(table);
+    .from(table)
+    .where(
+      ownedBy === undefined
+        ? undefined
+        : sql`(${table.assigneeId} = ${ownedBy} or ${table.createdById} = ${ownedBy})`,
+    );
 
   return row;
 }
