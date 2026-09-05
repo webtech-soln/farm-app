@@ -1181,6 +1181,126 @@ export const tasksRelations = relations(tasks, ({ one }) => ({
   assignee: one(users, { fields: [tasks.assigneeId], references: [users.id] }),
 }));
 
+/**
+ * Every `many()` above needs the matching `one()` here: Drizzle pairs the two
+ * sides by table, and a `many` with no partner is what makes Studio fail to
+ * extract relations rather than just skip them.
+ */
+export const paymentsRelations = relations(payments, ({ one }) => ({
+  order: one(orders, { fields: [payments.orderId], references: [orders.id] }),
+  customer: one(customers, {
+    fields: [payments.customerId],
+    references: [customers.id],
+  }),
+  createdBy: one(users, {
+    fields: [payments.createdById],
+    references: [users.id],
+  }),
+}));
+
+export const orderEventsRelations = relations(orderEvents, ({ one }) => ({
+  order: one(orders, { fields: [orderEvents.orderId], references: [orders.id] }),
+  createdBy: one(users, {
+    fields: [orderEvents.createdById],
+    references: [users.id],
+  }),
+}));
+
+export const expensesRelations = relations(expenses, ({ one }) => ({
+  supplier: one(suppliers, {
+    fields: [expenses.supplierId],
+    references: [suppliers.id],
+  }),
+  recordedBy: one(users, {
+    fields: [expenses.recordedById],
+    references: [users.id],
+  }),
+}));
+
+export const houseReadingsRelations = relations(houseReadings, ({ one }) => ({
+  house: one(houses, {
+    fields: [houseReadings.houseId],
+    references: [houses.id],
+  }),
+}));
+
+export const mortalityRecordsRelations = relations(
+  mortalityRecords,
+  ({ one }) => ({
+    flock: one(flocks, {
+      fields: [mortalityRecords.flockId],
+      references: [flocks.id],
+    }),
+    house: one(houses, {
+      fields: [mortalityRecords.houseId],
+      references: [houses.id],
+    }),
+    recordedBy: one(users, {
+      fields: [mortalityRecords.recordedById],
+      references: [users.id],
+    }),
+  }),
+);
+
+export const weightRecordsRelations = relations(weightRecords, ({ one }) => ({
+  flock: one(flocks, {
+    fields: [weightRecords.flockId],
+    references: [flocks.id],
+  }),
+  house: one(houses, {
+    fields: [weightRecords.houseId],
+    references: [houses.id],
+  }),
+  recordedBy: one(users, {
+    fields: [weightRecords.recordedById],
+    references: [users.id],
+  }),
+}));
+
+export const healthEventsRelations = relations(healthEvents, ({ one }) => ({
+  flock: one(flocks, {
+    fields: [healthEvents.flockId],
+    references: [flocks.id],
+  }),
+  house: one(houses, {
+    fields: [healthEvents.houseId],
+    references: [houses.id],
+  }),
+  reportedBy: one(users, {
+    fields: [healthEvents.reportedById],
+    references: [users.id],
+  }),
+}));
+
+export const vaccinationsRelations = relations(vaccinations, ({ one }) => ({
+  flock: one(flocks, {
+    fields: [vaccinations.flockId],
+    references: [flocks.id],
+  }),
+  house: one(houses, {
+    fields: [vaccinations.houseId],
+    references: [houses.id],
+  }),
+  administeredBy: one(users, {
+    fields: [vaccinations.administeredById],
+    references: [users.id],
+  }),
+}));
+
+export const inventoryMovementsRelations = relations(
+  inventoryMovements,
+  ({ one }) => ({
+    item: one(inventoryItems, {
+      fields: [inventoryMovements.itemId],
+      references: [inventoryItems.id],
+    }),
+    createdBy: one(users, {
+      fields: [inventoryMovements.createdById],
+      references: [users.id],
+    }),
+  }),
+);
+
 /* -------------------------------------------------------------------------- */
 /* Inferred types                                                             */
 /* -------------------------------------------------------------------------- */
