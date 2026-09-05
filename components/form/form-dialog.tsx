@@ -184,7 +184,7 @@ function DialogShell({
     >
       <div className="flex max-h-[84vh] flex-col">
         <div className="flex items-start gap-3 border-b border-border-hair px-5 py-4">
-          <div className="flex min-w-0 flex-1 flex-col gap-[3px]">
+          <div className="flex min-w-0 flex-[1_1_12rem] flex-col gap-[3px]">
             <h2 className="text-md font-semibold text-ink">{title}</h2>
             {description ? (
               <p className="text-sm text-ink-2">{description}</p>

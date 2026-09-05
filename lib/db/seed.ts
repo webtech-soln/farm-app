@@ -82,7 +82,7 @@ async function seed() {
         passwordHash: password,
         role: "owner",
         jobTitle: "Farm Owner",
-        phone: "+234 802 900 1122",
+        phone: "+233244294382",
         assignedArea: "All houses",
         attendancePct: 100,
         dutyStatus: "on_duty",

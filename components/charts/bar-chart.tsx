@@ -54,21 +54,21 @@ export function BarChart({
           {labels.map((label, index) => (
             <div
               key={label}
-              className="flex h-full flex-1 items-end justify-center gap-[3px]"
+              className="flex h-full min-w-0 flex-1 items-end justify-center gap-[3px]"
             >
               {series.map((entry) => (
                 <div
                   key={entry.name}
                   title={`${entry.name}: ${entry.values[index]}`}
                   style={{
-                    width: barWidth,
+                    maxWidth: barWidth,
                     height: `${Math.max(
                       0,
                       Math.min(100, ((entry.values[index] - min) / span) * 100),
                     )}%`,
                     backgroundColor: entry.colors?.[index] ?? entry.color,
                   }}
-                  className="rounded-t-[4px]"
+                  className="min-w-0 flex-1 rounded-t-[4px]"
                 />
               ))}
             </div>
@@ -79,7 +79,7 @@ export function BarChart({
           {labels.map((label) => (
             <span
               key={label}
-              className="flex-1 text-center text-2xs text-ink-3"
+              className="min-w-0 flex-1 text-center text-2xs text-ink-3"
             >
               {label}
             </span>

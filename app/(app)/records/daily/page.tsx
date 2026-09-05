@@ -360,7 +360,7 @@ export default async function DailyRecordsPage({
 
       <Card className="flex flex-col scroll-mt-6">
         <div className="flex flex-wrap items-center gap-2.5 px-[18px] py-3.5" id="history">
-          <div className="flex min-w-0 flex-1 flex-col gap-[3px]">
+          <div className="flex min-w-0 flex-[1_1_12rem] flex-col gap-[3px]">
             <h2 className="text-md font-semibold text-ink">Recent records</h2>
             <p className="text-sm text-ink-2">
               The last {history.length} days filed for {form.house.name}

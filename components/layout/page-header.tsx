@@ -19,7 +19,7 @@ export function PageHeader({
 }) {
   return (
     <div className="flex flex-wrap items-center gap-4">
-      <div className="flex min-w-0 flex-1 flex-col gap-[5px]">
+      <div className="flex min-w-0 flex-[1_1_16rem] flex-col gap-[5px]">
         {breadcrumb?.length ? (
           <nav className="flex items-center gap-1.5">
             {breadcrumb.map((segment, index) => {
